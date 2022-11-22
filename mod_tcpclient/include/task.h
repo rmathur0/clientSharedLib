@@ -35,6 +35,12 @@ typedef struct msgq {
 	struct msgq *next;
 } msgq_t;
 
+/* DS to hold the function pointers to be used for callbacks
+ * Is there a 1:1 mapping of Message-type:Callback-FP ?
+ */
+typedef struct dsfp dsfp;
+
+
 /* Check if provided ID is present in the connection Q */
 int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn);
 
@@ -49,6 +55,9 @@ con_t *create_peers(configurator *cfg);
 
 /* Monitor peers on con_t */
 void monitor_conn(configurator *cfg);
+
+/* Add element in msgq */
+void add_entry_msgq(msgq_t **head, char *buf);
 
 
 
