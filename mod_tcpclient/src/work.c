@@ -8,8 +8,6 @@
 
 configurator *ref_gcfg;
 con_t *gcl;
-fd_set gread_fds, gwrite_fds, gexcept_fds;
-int gmax_fd = 0;
 
 /* Signal handler function (defined below). */
 static void sighandler(int signal);
@@ -108,6 +106,8 @@ connect_now:
 		setsockopt(conn, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(int));
 		gcl[i].fd = conn;
 		gcl[i].state = 1;
+		if (gmax_fd < conn)
+			gmax_fd = conn;
 	}
 	printf("\nTCP connections up\n");
 	
@@ -140,21 +140,44 @@ connect_now:
 	return 0;
 }
 
-void *manager_thread(void *arg)
+void *pipe_thread(void *arg)
 {
-	int rc = 0,pip ;
-
-	puts("\nInside manage_threads\n");
+	int rc = 0,pip = 0, activity = -1, max_fd = 0 ;
+	fd_set pread_fds, pwrite_fds, pexcept_fds;
+	char *pbuf;
+	
+	puts("\nInside pipe_threads\n");
 	/* Create the FIFO if it does not exist */
 fifo:	mknod(FIFO, S_IFIFO|0640, 0);
 	pip = open(FIFO, O_RDONLY| O_NDELAY);
 	setnonblock(pip);
 	gcl[ref_gcfg->num_peers].fd = pip;
 	gcl[ref_gcfg->num_peers].state = 1;
+	if (max_fd < pip)
+		max_fd = pip;
 	while(1)
 	{
-		build_fd_sets(pip, &gread_fds, &gwrite_fds, &gexcept_fds);
+		build_fd_sets(pip, &pread_fds, &pwrite_fds, &pexcept_fds);
+		int activity = select(maxfd + 1, &read_fds, NULL, &pexcept_fds, NULL);
+		switch (activity)
+		{
+		case -1:
+		case 0:
+			perror("\nSelect failed.Exiting.\n");
+			exit(1);
+		default:
+			if (FD_ISSET(pip, &pread_fs))
+			{
+				pbuf = receive_from_fd(pip, &rc);
+				switch(rc)
+				{
+				case 0:
+					goto fifo;
+				default:
+					/* TBD adding into  tsidque_t and  msgq_t */
+			}
 		
+		}
 		printf ("\nInside manage_thread loop.\n");
 		sleep(3);
 	}
@@ -163,7 +186,6 @@ fifo:	mknod(FIFO, S_IFIFO|0640, 0);
 
 int build_fd_sets(int fd, fd_set *read_fds, fd_set *write_fds, fd_set *except_fds)
 {
-	/* Acquire Lock here */
 	FD_ZERO(read_fds);
 	FD_SET(fd, read_fds);
   
@@ -173,67 +195,61 @@ int build_fd_sets(int fd, fd_set *read_fds, fd_set *write_fds, fd_set *except_fd
  
 	FD_ZERO(except_fds);
 	FD_SET(fd, except_fds);
-  	/* Release Lock here */
 
 	return 0;
 }
-int receive_from_fd(int fd, char *buf)
+
+char * receive_from_fd(int fd, int *ret)
 {
 	int i = 0, read_bytes = 0;
         char *readbuf=NULL, lenbuf[5];
         int total_read = 0, total_size = 5, received = 0, burst_len = 0;
-
-	while(1)
+	
+	ret = &i;
+	memset(lenbuf, 0, 5);
+again:  read_bytes = read(fd, lenbuf+total_read, total_size, MSG_WAITALL);
+        if(read_bytes!= total_size)
         {
-                memset(lenbuf, 0, 5);
-again:          read_bytes = read(fd, lenbuf+total_read, total_size, MSG_WAITALL);
-                if(read_bytes!= total_size)
-                {
-                        if (read_bytes == 0) {
-                                printf("\nPIPE broken, attempting to create/join again.\n");
-                                goto fifo;
-                        } else if (read_bytes < 0) {
-                                if(errno == EWOULDBLOCK || errno == EAGAIN|| errno == EINTR) {
-                                        goto again;
-                                }
-                        } else {
-                                printf("\nReceived bytes:%d, total bytes:%d\n", read_bytes, total_size);
-                                total_read+=read_bytes;
-                                total_size-=read_bytes;
-                                printf("\nReceived bytes:%d, left bytes:%d\n", total_read, total_size);
-                                if(errno == EWOULDBLOCK || errno == EAGAIN||errno == EINTR)
-                                        goto again;
+        	if (read_bytes == 0) {
+                	printf("\nPIPE broken, attempting to create/join again.\n");
+                        i = 0;
+			return NULL;
+                } else if (read_bytes < 0) {
+                        if(errno == EWOULDBLOCK || errno == EAGAIN|| errno == EINTR) {
+                        	goto again;
                         }
+                } else {
+                        printf("\nReceived bytes:%d, total bytes:%d\n", read_bytes, total_size);
+                        total_read+=read_bytes;
+                        total_size-=read_bytes;
+                        printf("\nReceived bytes:%d, left bytes:%d\n", total_read, total_size);
+                        if(errno == EWOULDBLOCK || errno == EAGAIN||errno == EINTR)
+                                 goto again;
                 }
-                total_read+=read_bytes;
-                received = atoi(lenbuf);
-                printf("\nReceived string: \"%s\" and length is %d\n", lenbuf, received);
-                read_bytes = 0;
-                if ((read_buf)&&(*readbuf)) {
+         }
+         total_read+=read_bytes;
+         received = atoi(lenbuf);
+         printf("\nReceived string: \"%s\" and length is %d\n", lenbuf, received);
+         read_bytes = 0;
+         read_buf = (char*)calloc(total_read+1, sizeof(char));
+         while(read_bytes < received)
+         {
+         	burst_len = recv(fd, read_buf+read_bytes, received-read_bytes, MSG_WAITALL);
+                if (burst_len > 0)
+                	read_bytes+=burst_len;
+                else if (burst_len == 0) {
                         free(readbuf);
-                        readbuf = NULL;
+			i = 0;
+                        return NULL;
                 }
-                read_buf = (char*)calloc(total_read+1, sizeof(char));
-                while(read_bytes < received)
-                {
-                        burst_len = recv(fd, read_buf+read_bytes, received-read_bytes, MSG_WAITALL);
-                        if (burst_len > 0)
-                                read_bytes+=burst_len;
-                        else if (burst_len == 0) {
-                                free(readbuf);
-                                return 0;
-                        }
-                        else {
-                                if(errno == EWOULDBLOCK || errno == EAGAIN||errno == EINTR)
-                                        continue;
-                        }
+                else {
+                        if(errno == EWOULDBLOCK || errno == EAGAIN||errno == EINTR)
+                        	continue;
                 }
-		buf = read_buf;
-                printf ("\nReceived msg: %s\n", read_buf);
-                /*
-                 * TBD adding into  tsidque_t and  msgq_t
-                 */
-	return 1;
+        }
+        printf ("\nReceived msg: %s\n", read_buf);
+	i = received;
+	return read_buf;
 }
 
 void *workers(void * arg)
