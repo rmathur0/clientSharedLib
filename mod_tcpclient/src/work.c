@@ -68,6 +68,10 @@ void *worker_thread(void *arg) {
         {
                 printf ("\nInside mworker_thread loop.\n");
                 sleep(3);
+		/* Check for reading
+		 * If available, read
+		 * Then check for writing
+		 */
         }
         pthread_exit(NULL);
 }
@@ -166,7 +170,7 @@ fifo:	mknod(FIFO, S_IFIFO|0640, 0);
 		default:
 			if (FD_ISSET(pip, &pread_fds))
 			{
-				pbuf = receive_from_fd(pip, &rc);
+				pbuf = generic_receive_from_fd(pip, &rc);
 				switch(rc)
 				{
 				case 0:
@@ -199,11 +203,30 @@ int build_fd_sets(int fd, fd_set *read_fds, fd_set *write_fds, fd_set *except_fd
 	return 0;
 }
 
+char *generic_receive_from_fd(int fd, int *ret)
+{
+	char lenbuf[5], *read_buf;
+	int read_bytes = 0, total_read = 0, total_size = 4, received = 0, burst_len = 0;
+	int rc = -1;
+	ret = &rc;
+	read_bytes = read(fd, lenbuf, total_size);
+	if (read_bytes == 0) {
+		rc = 0;
+		return NULL;
+	}
+	read_buf = (char *)calloc(read_bytes, sizeof(char));
+	burst_len = read(fd, read_buf, sizeof(readbuf));
+	rc = 1;
+	return read_buf;
+}
+
+
+
 char *receive_from_fd(int fd, int *ret)
 {
 	int i = 0, read_bytes = 0;
         char *read_buf=NULL, lenbuf[5];
-        int total_read = 0, total_size = 5, received = 0, burst_len = 0;
+        int total_read = 0, total_size = 4, received = 0, burst_len = 0;
 	
 	ret = &i;
 	memset(lenbuf, 0, 5);

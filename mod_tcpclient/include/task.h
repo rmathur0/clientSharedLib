@@ -11,6 +11,7 @@ typedef struct {
 	int fd;
 	int state;
 	struct msgq *mq;
+	int capacity;
 } con_t;
 
 /* Queue to determine Conn based on TID+SID */
