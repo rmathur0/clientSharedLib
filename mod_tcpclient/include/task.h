@@ -11,6 +11,7 @@ struct msgq;
 typedef struct {
 	int fd;
 	int state;
+	int peer_id;
 } con_t;
 
 /* Queue to determine Conn based on TID+SID */
@@ -39,6 +40,12 @@ int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn);
 
 /* Add new element in this Q */
 void add_entry_idq(tsidque_t **head, char *tid, char *sid);
+
+/* Del expired element in this Q */
+void rem_expired_idq(tsidque_t **head);
+
+/* Create peers in con_t */
+con_t *create_peers(int num_peers);
 
 
 #endif

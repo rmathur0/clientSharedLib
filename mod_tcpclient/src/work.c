@@ -36,25 +36,7 @@ void *monitor_thread(void *arg) {
         while(1)
         {
 		printf ("\nmonitoring TCP connections.\n");
-		for (i = 0; i < ref_gcfg->num_peers; i++) {
-			rc = getsockopt (gcl[i].fd, SOL_SOCKET, SO_ERROR, &err, &len);
-			if ((rc != 0)||(err != 0)) {
-				printf ("\nerror getting getsockopt return code: %s and socket error: %s\n", strerror(rc), strerror(err));
-				close(gcl[i].fd);
-				gcl[i].state=0;
-				gcl[i].fd = socket(AF_INET, SOCK_STREAM, 0);
-				bzero((char *) &server_addr, sizeof (server_addr));
-				inet_pton(AF_INET, ref_gcfg->peers[i].ip, &(server_addr.sin_addr));
-				server_addr.sin_port = htons(ref_gcfg->peers[i].port);
-				connect(gcl[i].fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-				setnonblock(gcl[i].fd);
-                		setsockopt(gcl[i].fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
-                		setsockopt(gcl[i].fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(int));
-                		setsockopt(gcl[i].fd, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(int));
-                		setsockopt(gcl[i].fd, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(int));
-                		gcl[i].state = 1;
-			}
-		}
+		monitor_conn(ref_gcfg);
 		sleep(3);
 		/* Check MsgQ and tally with IDQ to choose best connection to send out the msg below */
         }
@@ -102,58 +84,38 @@ void *worker_thread(void *arg) {
 int manage(configurator *cfg)
 {
 	int i, rc, conn, keepalive = 1, keepcnt = 5, keepidle = 30, keepintvl = 120;
-	pthread_t monit_t, worker_t;
+	pthread_t manager_t, monit_t, *worker_t, pipe_t;
 	struct sockaddr_in server_addr;
 
 	ref_gcfg = cfg;
-	/* Number of Peers + 1 fd for PIPE */
-	gcl = (con_t*)calloc(ref_gcfg->num_peers+1, sizeof(con_t));
-
-	/* Create TCP connections and store them in a linked list */
-	for (i = 0; i < ref_gcfg->num_peers; i++)
-	{
-		if ((conn = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-			perror("\nSocket creation failed. Exiting.\n");
-			exit(1);
-		}
-connect_now:
-		bzero((char *) &server_addr, sizeof (server_addr));
-		inet_pton(AF_INET, ref_gcfg->peers[i].ip, &(server_addr.sin_addr));
-		server_addr.sin_port = htons(ref_gcfg->peers[i].port);
-		rc = connect(conn, (struct sockaddr *)&server_addr, sizeof(server_addr));
-		if (rc < 0) {
-			perror("\nConnect failed. Retrying in 5 seconds.\n");
-			sleep(5);
-			goto connect_now;
-		}
-		setnonblock(conn);
-		setsockopt(conn, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
-		setsockopt(conn, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(int));
-		setsockopt(conn, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(int));
-		setsockopt(conn, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(int));
-		gcl[i].fd = conn;
-		gcl[i].state = 1;
-	}
+	gcl = create_peers(ref_gcfg);
 	printf("\nTCP connections up\n");
 	
-	printf ("\nCreating manager thread\n");
-	rc = pthread_create(&monit_t, NULL, manager_thread, NULL);
+	/* Thread to manage queues */
+	printf ("\nCreating qmanager thread\n");
+	rc = pthread_create(&manager_t, NULL, qmanager_thread, NULL);
 	if (rc != 0)
 	{
 		perror("pthread_create failed\n");
 		exit (1);
 	}
-	pthread_detach(monit_t);
+	pthread_detach(manager_t);
+
+	/* Thread for far right peers communication */
+	printf("\nCreating worker threads.\n");
+	worker_t = (pthread*)calloc(ref_gcfg->num_peers, sizeof(pthread_t));
 	for (i = 0; i < ref_gcfg->num_peers; i++)
 	{
-		rc = pthread_create(&worker_t, NULL, worker_thread, &gcl[i]);
+		rc = pthread_create(&worker_t[i], NULL, worker_thread, &gcl[i]);
 		if (rc != 0)
 		{
 			perror("pthread_create failed\n");
 			exit(1);
 		}
-		pthread_detach(worker_t);
+		pthread_detach(worker_t[i]);
 	}
+
+	/* Thread for monitoring the connections to far right peers */
 	printf ("\nCreating monitor thread\n");
         rc = pthread_create(&monit_t, NULL, monitor_thread, NULL);
         if (rc != 0)
@@ -162,6 +124,16 @@ connect_now:
                 exit (1);
         }
         pthread_detach(monit_t);
+
+	/* Thread for PIPE communication */
+	printf ("\nCreating pipe thread\n");
+        rc = pthread_create(&pipe_t, NULL, pipe_thread, NULL);
+        if (rc != 0)
+        {
+                perror("pthread_create failed\n");
+                exit (1);
+        }
+        pthread_detach(pipe_t);
 	return 0;
 }
 
@@ -176,8 +148,6 @@ void *pipe_thread(void *arg)
 fifo:	mknod(FIFO, S_IFIFO|0640, 0);
 	pip = open(FIFO, O_RDONLY| O_NDELAY);
 	setnonblock(pip);
-	gcl[ref_gcfg->num_peers].fd = pip;
-	gcl[ref_gcfg->num_peers].state = 1;
 	if (max_fd < pip)
 		max_fd = pip;
 	while(1)
@@ -298,9 +268,16 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
 	return read_buf;
 }
 
-void *workers(void * arg)
+void *qmanager_thread(void * arg)
 {
 
+	printf ("\n Inside qmanager thread\n");
+
+	while(1)
+	{
+		printf ("\nInside qmanager_thread loop.");
+		sleep(3);
+	}
 	return NULL;
 }
 

@@ -2,7 +2,73 @@
 #include "../include/module.h"
 #include "../include/task.h"
 
+con_t *gconn_list;
 static int glast_con_rr;
+
+/* Create peers in con_t */
+con_t *create_peers(configurator *cfg)
+{
+	int i = 0; rc = -1, retry = 0;
+	gconn_list = (con_t*)calloc(cfg->num_peers, sizeof(con_t));
+
+        /* Create TCP connections and store them */
+        for (i = 0; i < cfg->num_peers; i++)
+        {
+		retry = 1;
+connect_now:            if ((conn = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+                        perror("\nSocket creation failed. Exiting.\n");
+                        exit(1);
+                }
+                bzero((char *) &server_addr, sizeof (server_addr));
+                inet_pton(AF_INET, cfg->peers[i].ip, &(server_addr.sin_addr));
+                server_addr.sin_port = htons(cfg->peers[i].port);
+                rc = connect(conn, (struct sockaddr *)&server_addr, sizeof(server_addr));
+                if (rc < 0) {
+                        perror("\nConnect failed for [%s:%d] \n", cfg->peers[i].ip, cfg->peers[i].port);
+                        if (retry == 1) {
+				perror("\nRetrying in 5 seconds.\n");
+				close(conn);
+				retry--;
+				sleep(5);
+                        	goto connect_now;
+			}
+                }
+                setnonblock(conn);
+                setsockopt(conn, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
+                setsockopt(conn, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(int));
+                setsockopt(conn, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(int));
+                setsockopt(conn, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(int));
+                gconn_list[i].fd = conn;
+                gconn_list[i].state = 1;
+                gconn_list[i].peer = i;
+        }
+	return gconn_list;
+}
+
+void monitor_conn(configurator *cfg)
+{
+	printf ("\nmonitoring TCP connections.\n");
+        for (i = 0; i < cfg->num_peers; i++) {
+        	rc = getsockopt (gconn_list[i].fd, SOL_SOCKET, SO_ERROR, &err, &len);
+        	if ((rc != 0)||(err != 0)) {
+        		printf ("\nerror getting getsockopt return code: %s and socket error: %s\n", strerror(rc), strerror(err));
+        		close(gconn_list[i].fd);
+        		gconn_list[i].state=0;
+        		gconn_list[i].fd = socket(AF_INET, SOCK_STREAM, 0);
+        		bzero((char *) &server_addr, sizeof (server_addr));
+        		inet_pton(AF_INET, cfg->peers[i].ip, &(server_addr.sin_addr));
+        		server_addr.sin_port = htons(cfg->peers[i].port);
+        		connect(gconn_list[i].fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+        		setnonblock(gconn_list[i].fd);
+        		setsockopt(gconn_list[i].fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
+        		setsockopt(gconn_list[i].fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(int));
+        		setsockopt(gconn_list[i].fd, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(int));
+        		setsockopt(gconn_list[i].fd, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(int));
+        		gconn_list[i].state = 1;
+        	}
+        }
+}
+
 
 /* Check if provided ID (TID+SID) is present in the connection Q */
 int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn)
@@ -67,7 +133,15 @@ void add_entry_idq(tsidque_t **head, char *tid, char *sid)
 		temp->conn = con;
 	else {
 		num_peers = get_peers();
-		temp->conn = glast_con_rr % num_peers;
+reassign_conn:	con = glast_con_rr % num_peers;
+		if (gconn_list[con].state == 1)
+			temp->conn = con;
+		else {
+			glast_con_rr++;
+			if (glast_con_rr == num_peers)
+				glast_con_rr = 0;
+			goto reassign_conn;
+		}
 		glast_con_rr++;
 		if (glast_con_rr == num_peers)
 			glast_con_rr = 0;
