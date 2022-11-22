@@ -54,24 +54,45 @@ void *monitor_thread(void *arg) {
 			}
 		}
 		sleep(3);
+		/* Check MsgQ and tally with IDQ to choose best connection to send out the msg below */
         }
         pthread_exit(NULL);
 }
 
 
 void *worker_thread(void *arg) {
-	int client_fd, rc, i;
-	char* message = (char*)calloc(BLOCK_SIZE, sizeof(char));
+	con_t *c = (con_t*)arg;
+	char* message;
+	int rc = 0,fd = 0, activity = -1, max_fd = 0;
+        fd_set read_fds, write_fds, except_fds;
 
         puts("\nInside worker thread\n");
         while(1)
         {
-                printf ("\nInside mworker_thread loop.\n");
-                sleep(3);
-		/* Check for reading
-		 * If available, read
-		 * Then check for writing
-		 */
+		build_fd_sets(c->fd, &read_fds, &write_fds, &except_fds);
+                int activity = select(max_fd + 1, &read_fds, NULL, &except_fds, NULL);
+                switch (activity)
+                {
+                case -1:
+                case 0:
+                        perror("\nSelect failed.Exiting.\n");
+                        exit(1);
+                default:
+                        if (FD_ISSET(c->fd, &read_fds))
+                        {
+                                pbuf = receive_from_fd(pip, &rc);
+                                switch(rc)
+                                {
+                                case 0:
+                                        goto fifo;
+                                default:
+                                        printf("\n Received string: [%s]\n",pbuf);
+                                        /* TBD on what to do with the received msg and clean the buffer */
+                                }
+                        }
+
+                }
+                printf ("\nInside manage_thread loop.\n");
         }
         pthread_exit(NULL);
 }
@@ -123,7 +144,7 @@ connect_now:
 	pthread_detach(monit_t);
 	for (i = 0; i < ref_gcfg->num_peers; i++)
 	{
-		rc = pthread_create(&worker_t, NULL, worker_thread, NULL);
+		rc = pthread_create(&worker_t, NULL, worker_thread, &gcl[i]);
 		if (rc != 0)
 		{
 			perror("pthread_create failed\n");
