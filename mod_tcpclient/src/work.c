@@ -141,25 +141,64 @@ connect_now:
 void *manager_thread(void *arg)
 {
 	int i = 0,pip, read_bytes;
-	char readbuf[BLOCK_SIZE];
+	char *readbuf=NULL, lenbuf[5];
+	int total_read=0, total_size=5, received=0, burst_len=0;
 	puts("\nInside manage_threads\n");
-fifo:
 	/* Create the FIFO if it does not exist */
-	mknod(FIFO, S_IFIFO|0640, 0);
+fifo:	mknod(FIFO, S_IFIFO|0640, 0);
 	pip = open(FIFO, O_RDONLY| O_NDELAY);
-	/* Setting it to non-blocking so that broken PIPE can be checked and recreated */
-	//setnonblock(pip);
+	setnonblock(pip);
 	gcl[ref_gcfg->num_peers].fd = pip;
 	gcl[ref_gcfg->num_peers].state = 1;
 	while(1)
 	{
-		read_bytes = read(pip, readbuf, sizeof(readbuf));
-      		if (read_bytes == 0) {
-			printf("\nPIPE broken, attempting to create/join again.\n");
-			goto fifo;
+		memset(lenbuf, 0, 5);
+again:		read_bytes = read(pip, lenbuf+total_read, total_size, MSG_WAITALL);
+      		if(read_bytes!= total_size)
+		{
+			if (read_bytes == 0) {
+				printf("\nPIPE broken, attempting to create/join again.\n");
+				goto fifo;
+			} else if (read_bytes < 0) {
+				if(errno == EWOULDBLOCK || errno == EAGAIN|| errno == EINTR) {
+					goto again;
+				}
+			} else {
+				printf("\nReceived bytes:%d, total bytes:%d\n", read_bytes, total_size);
+				total_read+=read_bytes;
+				total_size-=read_bytes;
+				printf("\nReceived bytes:%d, left bytes:%d\n", total_read, total_size);
+				if(errno == EWOULDBLOCK || errno == EAGAIN||errno == EINTR)
+					goto again;
+			}
 		}
-		readbuf[read_bytes] = '\0';
-      		printf("Received string: \"%s\" and length is %d\n", readbuf, (int)strlen(readbuf));
+		total_read+=read_bytes;
+		received = atoi(lenbuf);
+      		printf("\nReceived string: \"%s\" and length is %d\n", lenbuf, received);
+		read_bytes = 0;
+		if ((read_buf)&&(*readbuf)) {
+			free(readbuf);
+			readbuf = NULL;
+		}
+		read_buf = (char*)calloc(total_read+1, sizeof(char));
+		while(read_bytes < received)
+		{
+			burst_len = recv(pip, read_buf+read_bytes, received-read_bytes, MSG_WAITALL);
+			if (burst_len > 0)
+				read_bytes+=burst_len;
+			else if (burst_len == 0) {
+				free(readbuf);
+				goto fifo;
+			}
+			else {
+				if(errno == EWOULDBLOCK || errno == EAGAIN||errno == EINTR)
+					continue;
+			}
+		}
+		printf ("\nReceived msg: %s\n", read_buf);
+		/*
+ 		 * TBD adding into  tsidque_t and  msgq_t
+ 		 */	
 		printf ("\nInside manage_thread loop.\n");
 		sleep(3);
 	}
