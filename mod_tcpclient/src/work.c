@@ -29,7 +29,7 @@ static int setnonblock(int fd) {
 void *monitor_thread(void *arg) {
         int err = 0, rc, i;
 	int keepalive = 1, keepcnt = 5, keepidle = 30, keepintvl = 120;
-	struct sockaddr_in sin;
+	struct sockaddr_in server_addr;
 	socklen_t len = sizeof (err);
         puts("\nInside monitor thread\n");
         while(1)
@@ -38,7 +38,7 @@ void *monitor_thread(void *arg) {
 		for (i = 0; i < ref_gcfg->num_peers; i++) {
 			rc = getsockopt (gcl[i].fd, SOL_SOCKET, SO_ERROR, &err, &len);
 			if ((rc != 0)||(err != 0)) {
-				printf ("\nerror getting getsockopt return code: %s and socket error: %s\n", strerror(retval), strerror(err));
+				printf ("\nerror getting getsockopt return code: %s and socket error: %s\n", strerror(rc), strerror(err));
 				close(gcl[i].fd);
 				gcl[i].state=0;
 				gcl[i].fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -50,9 +50,9 @@ void *monitor_thread(void *arg) {
                 		setsockopt(gcl[i].fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(int));
                 		setsockopt(gcl[i].fd, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(int));
                 		setsockopt(gcl[i].fd, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(int));
-                		gcl[i].fd = conn;
                 		gcl[i].state = 1;
 			}
+		}
 		sleep(3);
         }
         pthread_exit(NULL);
@@ -106,8 +106,6 @@ connect_now:
 		setsockopt(conn, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(int));
 		gcl[i].fd = conn;
 		gcl[i].state = 1;
-		if (gmax_fd < conn)
-			gmax_fd = conn;
 	}
 	printf("\nTCP connections up\n");
 	
@@ -158,7 +156,7 @@ fifo:	mknod(FIFO, S_IFIFO|0640, 0);
 	while(1)
 	{
 		build_fd_sets(pip, &pread_fds, &pwrite_fds, &pexcept_fds);
-		int activity = select(maxfd + 1, &read_fds, NULL, &pexcept_fds, NULL);
+		int activity = select(max_fd + 1, &pread_fds, NULL, &pexcept_fds, NULL);
 		switch (activity)
 		{
 		case -1:
@@ -166,7 +164,7 @@ fifo:	mknod(FIFO, S_IFIFO|0640, 0);
 			perror("\nSelect failed.Exiting.\n");
 			exit(1);
 		default:
-			if (FD_ISSET(pip, &pread_fs))
+			if (FD_ISSET(pip, &pread_fds))
 			{
 				pbuf = receive_from_fd(pip, &rc);
 				switch(rc)
@@ -174,7 +172,9 @@ fifo:	mknod(FIFO, S_IFIFO|0640, 0);
 				case 0:
 					goto fifo;
 				default:
+					printf("\n Received string: [%s]\n",pbuf);
 					/* TBD adding into  tsidque_t and  msgq_t */
+				}
 			}
 		
 		}
@@ -199,15 +199,15 @@ int build_fd_sets(int fd, fd_set *read_fds, fd_set *write_fds, fd_set *except_fd
 	return 0;
 }
 
-char * receive_from_fd(int fd, int *ret)
+char *receive_from_fd(int fd, int *ret)
 {
 	int i = 0, read_bytes = 0;
-        char *readbuf=NULL, lenbuf[5];
+        char *read_buf=NULL, lenbuf[5];
         int total_read = 0, total_size = 5, received = 0, burst_len = 0;
 	
 	ret = &i;
 	memset(lenbuf, 0, 5);
-again:  read_bytes = read(fd, lenbuf+total_read, total_size, MSG_WAITALL);
+again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
         if(read_bytes!= total_size)
         {
         	if (read_bytes == 0) {
@@ -238,7 +238,7 @@ again:  read_bytes = read(fd, lenbuf+total_read, total_size, MSG_WAITALL);
                 if (burst_len > 0)
                 	read_bytes+=burst_len;
                 else if (burst_len == 0) {
-                        free(readbuf);
+                        free(read_buf);
 			i = 0;
                         return NULL;
                 }

@@ -6,4 +6,5 @@
 void *manager_thread(void *arg);
 void *worker_thread(void *arg);
 int manage(configurator* c);
+char *receive_from_fd(int fd, int *ret);
 #endif
