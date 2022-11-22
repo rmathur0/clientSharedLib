@@ -28,10 +28,6 @@ static int setnonblock(int fd) {
 
 
 void *monitor_thread(void *arg) {
-        int err = 0, rc, i;
-	int keepalive = 1, keepcnt = 5, keepidle = 30, keepintvl = 120;
-	struct sockaddr_in server_addr;
-	socklen_t len = sizeof (err);
         puts("\nInside monitor thread\n");
         while(1)
         {
@@ -64,13 +60,14 @@ void *worker_thread(void *arg) {
                 default:
                         if (FD_ISSET(c->fd, &read_fds))
                         {
-                                pbuf = receive_from_fd(pip, &rc);
+                                message = receive_from_fd(c->fd, &rc);
                                 switch(rc)
                                 {
                                 case 0:
-                                        goto fifo;
+					/* It appears connection is lost, sleep for 10 sec and let monitor thread recreate the conection */
+                                        sleep(10);
                                 default:
-                                        printf("\n Received string: [%s]\n",pbuf);
+                                        printf("\n Received string: [%s]\n",message);
                                         /* TBD on what to do with the received msg and clean the buffer */
                                 }
                         }
@@ -83,9 +80,8 @@ void *worker_thread(void *arg) {
 
 int manage(configurator *cfg)
 {
-	int i, rc, conn, keepalive = 1, keepcnt = 5, keepidle = 30, keepintvl = 120;
+	int i, rc ;
 	pthread_t manager_t, monit_t, *worker_t, pipe_t;
-	struct sockaddr_in server_addr;
 
 	ref_gcfg = cfg;
 	gcl = create_peers(ref_gcfg);
@@ -103,7 +99,7 @@ int manage(configurator *cfg)
 
 	/* Thread for far right peers communication */
 	printf("\nCreating worker threads.\n");
-	worker_t = (pthread*)calloc(ref_gcfg->num_peers, sizeof(pthread_t));
+	worker_t = (pthread_t*)calloc(ref_gcfg->num_peers, sizeof(pthread_t));
 	for (i = 0; i < ref_gcfg->num_peers; i++)
 	{
 		rc = pthread_create(&worker_t[i], NULL, worker_thread, &gcl[i]);
@@ -199,7 +195,7 @@ int build_fd_sets(int fd, fd_set *read_fds, fd_set *write_fds, fd_set *except_fd
 char *generic_receive_from_fd(int fd, int *ret)
 {
 	char lenbuf[5], *read_buf;
-	int read_bytes = 0, total_read = 0, total_size = 4, received = 0, burst_len = 0;
+	int read_bytes = 0, total_size = 4, burst_len = 0;
 	int rc = -1;
 	ret = &rc;
 	read_bytes = read(fd, lenbuf, total_size);
@@ -208,7 +204,7 @@ char *generic_receive_from_fd(int fd, int *ret)
 		return NULL;
 	}
 	read_buf = (char *)calloc(read_bytes, sizeof(char));
-	burst_len = read(fd, read_buf, sizeof(readbuf));
+	burst_len = read(fd, read_buf, sizeof(read_buf));
 	rc = 1;
 	return read_buf;
 }

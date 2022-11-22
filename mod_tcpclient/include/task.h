@@ -45,7 +45,11 @@ void add_entry_idq(tsidque_t **head, char *tid, char *sid);
 void rem_expired_idq(tsidque_t **head);
 
 /* Create peers in con_t */
-con_t *create_peers(int num_peers);
+con_t *create_peers(configurator *cfg);
+
+/* Monitor peers on con_t */
+void monitor_conn(configurator *cfg);
+
 
 
 #endif

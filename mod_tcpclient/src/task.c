@@ -5,10 +5,26 @@
 con_t *gconn_list;
 static int glast_con_rr;
 
+/**
+ *  *  * Set a socket to non-blocking mode.
+ *   *   */
+static int setnonblock(int fd) {
+        int flags;
+
+        flags = fcntl(fd, F_GETFL);
+        if (flags < 0) return flags;
+        flags |= O_NONBLOCK;
+        if (fcntl(fd, F_SETFL, flags) < 0) return -1;
+        return 0;
+}
+
 /* Create peers in con_t */
 con_t *create_peers(configurator *cfg)
 {
-	int i = 0; rc = -1, retry = 0;
+	int i = 0, rc = -1, retry = 0, conn;
+	int keepalive = 1, keepcnt = 5, keepidle = 30, keepintvl = 120;
+	struct sockaddr_in server_addr;
+
 	gconn_list = (con_t*)calloc(cfg->num_peers, sizeof(con_t));
 
         /* Create TCP connections and store them */
@@ -24,7 +40,7 @@ connect_now:            if ((conn = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
                 server_addr.sin_port = htons(cfg->peers[i].port);
                 rc = connect(conn, (struct sockaddr *)&server_addr, sizeof(server_addr));
                 if (rc < 0) {
-                        perror("\nConnect failed for [%s:%d] \n", cfg->peers[i].ip, cfg->peers[i].port);
+                        printf ("\nConnect failed for [%s:%d] \n", cfg->peers[i].ip, cfg->peers[i].port);
                         if (retry == 1) {
 				perror("\nRetrying in 5 seconds.\n");
 				close(conn);
@@ -40,13 +56,18 @@ connect_now:            if ((conn = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
                 setsockopt(conn, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(int));
                 gconn_list[i].fd = conn;
                 gconn_list[i].state = 1;
-                gconn_list[i].peer = i;
+                gconn_list[i].peer_id = i;
         }
 	return gconn_list;
 }
 
 void monitor_conn(configurator *cfg)
 {
+	int i = 0, rc = -1, err = 0;
+        int keepalive = 1, keepcnt = 5, keepidle = 30, keepintvl = 120;
+        struct sockaddr_in server_addr;
+	socklen_t len = sizeof (err);
+
 	printf ("\nmonitoring TCP connections.\n");
         for (i = 0; i < cfg->num_peers; i++) {
         	rc = getsockopt (gconn_list[i].fd, SOL_SOCKET, SO_ERROR, &err, &len);
@@ -103,11 +124,9 @@ int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn)
 
 void add_entry_idq(tsidque_t **head, char *tid, char *sid)
 {
-	tsidque_t *temp = (tsidque_t*)calloc(1, sizeof(sidque_t));
+	tsidque_t *temp = (tsidque_t*)calloc(1, sizeof(tsidque_t));
 	char *temp_id;
 	tsidque_t *node = *head;
-	struct timeval t;
-	time_t curtime;
 	int rc = -1, num_peers = -1, con = -1;
 
 	if (sid && *sid)
