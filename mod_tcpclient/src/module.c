@@ -32,3 +32,7 @@ int mod_init(configurator cfg)
     return 0;    
 }
 
+int get_peers()
+{
+    return gconfig.num_peers;
+}

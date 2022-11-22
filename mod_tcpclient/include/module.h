@@ -17,8 +17,10 @@ typedef struct _config_params
 
 
 
-// Initialize the module by passing configuration object
+/* Initialize the module by passing configuration object */
 int mod_init(configurator cfg);
 
+/* Get total number of peers */
+int get_peers();
 
 #endif

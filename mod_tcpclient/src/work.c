@@ -8,6 +8,7 @@
 
 configurator *ref_gcfg;
 con_t *gcl;
+msgq_t *gmq;
 
 /* Signal handler function (defined below). */
 static void sighandler(int signal);
@@ -44,6 +45,7 @@ void *monitor_thread(void *arg) {
 				gcl[i].fd = socket(AF_INET, SOCK_STREAM, 0);
 				bzero((char *) &server_addr, sizeof (server_addr));
 				inet_pton(AF_INET, ref_gcfg->peers[i].ip, &(server_addr.sin_addr));
+				server_addr.sin_port = htons(ref_gcfg->peers[i].port);
 				connect(gcl[i].fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
 				setnonblock(gcl[i].fd);
                 		setsockopt(gcl[i].fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
