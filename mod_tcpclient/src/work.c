@@ -8,7 +8,7 @@
 
 configurator *ref_gcfg;
 con_t *gcl;
-msgq_t *gmq;
+msgque_t *gmq;
 
 /* Signal handler function (defined below). */
 static void sighandler(int signal);
@@ -137,6 +137,7 @@ void *pipe_thread(void *arg)
 {
 	int rc = 0,pip = 0, activity = -1, max_fd = 0 ;
 	fd_set pread_fds, pwrite_fds, pexcept_fds;
+	/* TODO change pbuf tyoe from char to xml structure */
 	char *pbuf;
 	
 	puts("\nInside pipe_threads\n");
@@ -159,7 +160,7 @@ fifo:	mknod(FIFO, S_IFIFO|0640, 0);
 		default:
 			if (FD_ISSET(pip, &pread_fds))
 			{
-				pbuf = generic_receive_from_fd(pip, &rc);
+				pbuf = (char*)generic_receive_from_fd(pip, &rc);
 				switch(rc)
 				{
 				case 0:
@@ -192,20 +193,23 @@ int build_fd_sets(int fd, fd_set *read_fds, fd_set *write_fds, fd_set *except_fd
 	return 0;
 }
 
-char *generic_receive_from_fd(int fd, int *ret)
+void *generic_receive_from_fd(int fd, int *ret)
 {
-	char lenbuf[5], *read_buf;
-	int read_bytes = 0, total_size = 4, burst_len = 0;
+	char pbuf[9];
+	void *read_buf;
+	int read_bytes = 0, total_size = 8;
+	long val;
 	int rc = -1;
 	ret = &rc;
-	read_bytes = read(fd, lenbuf, total_size);
+	memset(pbuf, 0, 9);
+	read_bytes = read(fd, pbuf, total_size);
 	if (read_bytes == 0) {
 		rc = 0;
 		return NULL;
 	}
-	read_buf = (char *)calloc(read_bytes, sizeof(char));
-	burst_len = read(fd, read_buf, sizeof(read_buf));
 	rc = 1;
+	val = atol(pbuf);
+	read_buf = val;
 	return read_buf;
 }
 

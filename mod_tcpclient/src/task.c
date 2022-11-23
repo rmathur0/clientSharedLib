@@ -115,11 +115,27 @@ int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn)
 		if ( strcmp(temp_id, temp->id) == 0)
 		{
 			*conn = temp->conn;
+			free(temp_id);
 			return 1;
 		}
 		temp = temp->next;
 	}
 	return 0;
+}
+
+void update_entry_idq(tsidque_t **head, char *id)
+{
+	tsidque_t *temp = *head;
+	while(temp->next != NULL)
+	{
+		if ( strcmp(id, temp->id) == 0)
+		{
+			gettimeofday(&temp->ATime, NULL);
+			temp->ETime = temp->ATime;
+			temp->ETime.tv_sec+= EXPIRY;
+			return;
+		}
+	}
 }
 
 void add_entry_idq(tsidque_t **head, char *tid, char *sid)
@@ -149,7 +165,7 @@ void add_entry_idq(tsidque_t **head, char *tid, char *sid)
 	num_peers = get_peers();
 	rc = is_ID_present_idq(head, tid, sid, &con);
 	if (rc == 1)
-		temp->conn = con;
+		update_entry_idq(head, temp_id);
 	else {
 		num_peers = get_peers();
 reassign_conn:	con = glast_con_rr % num_peers;
@@ -211,4 +227,51 @@ void rem_expired_idq(tsidque_t **head)
 		}
 			node = temp;
 	}while(node != NULL);
+}
+
+
+/* Add element in msgque_t */
+void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, int len, int conn, char *data)
+{
+	msgque_t *trav = *msghead;
+	msgque_t *temp = (msgque_t*)calloc(1, sizeof(msgque_t));
+	char *temp_id;
+        int rc = -1, num_peers = -1, con = -1;
+
+        if (sid && *sid)
+        {
+                temp_id = (char*)calloc((strlen(tid) + strlen(sid) + 1), sizeof(char));
+                strcpy(temp_id, tid);
+                strcat(temp_id, sid);
+        }
+        else
+        {
+                temp_id = (char*)calloc(strlen(tid)+1, sizeof(char));
+                strcpy(temp_id, tid);
+        }
+	temp->data = data;
+	temp->len = len;
+	strcpy(temp->id, temp_id);
+	temp->conn = conn;
+	rc = is_ID_present_idq(idhead, tid, sid, &temp->conn);
+	if (rc == 1)
+		update_entry_idq(idhead, temp_id);
+	else
+		add_entry_idq(idhead, tid, sid);
+	
+	if (trav == NULL)
+        {
+                *msghead = temp;
+                temp->prev = NULL;
+                return;
+        }
+        while(trav->next != NULL)
+                trav = trav->next;
+        trav->next = temp;
+        temp->prev = trav;
+}
+
+/* Pop element from msgque_t for a connection*/
+msgque_t *pop_from_msgq(msgque_t **head, int con)
+{
 }
