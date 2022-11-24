@@ -94,6 +94,9 @@ void *worker_thread(void *arg) {
                 }
 		/* ToDo: Acquire lock on msgque and tsidque */
 		node = pop_from_msgq(&gmsgq, c->peer_id);
+		rc = send_to_fd(c->fd, node->data, node->len);
+		/* rc contains total bytes written on wire */
+
                 printf ("\nInside manage_thread loop.\n");
         }
         pthread_exit(NULL);
