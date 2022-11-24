@@ -11,7 +11,7 @@ con_t *gcl;
 msgque_t *gmq;
 
 /* Signal handler function (defined below). */
-static void sighandler(int signal);
+void sighandler(int signal);
 
 /**
  *  * Set a socket to non-blocking mode.
@@ -214,7 +214,7 @@ void *generic_receive_from_fd(int fd, int *ret)
 	return read_buf;
 }
 
-int send_to_fd(int fd, char *buf, int len);
+int send_to_fd(int fd, char *buf, int len)
 {
 	int sent = 0, total_sent = 0;
 
@@ -267,7 +267,6 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
                 	read_bytes+=burst_len;
                 else if (burst_len == 0) {
                         free(read_buf);
-			i = 0;
                         return NULL;
                 }
                 else {
@@ -292,7 +291,7 @@ void *qmanager_thread(void * arg)
 	return NULL;
 }
 
-static void sighandler(int signal) {
+void sighandler(int signal) {
 	fprintf(stdout, "Received signal %d: %s.  Shutting down.\n", signal, strsignal(signal));
 	exit (1);
 }

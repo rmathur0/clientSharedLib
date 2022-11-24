@@ -68,7 +68,7 @@ void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, 
 msgque_t *pop_from_msgq(msgque_t **head, int con); 
 
 /* Add element in refque_t */
-void push_to_refq(refque_t **refhead, tsidque_t **idhead, long addr);
+void push_to_refq(refque_t **refhead, long addr);
 
 /* Pop element from refque_t for a connection*/
 long pop_from_refq(refque_t **head);

@@ -9,7 +9,7 @@ int manage(configurator* c);
 void *rcv_pipe_thread(void *arg);
 void *snd_pipe_thread(void *arg);
 void *qmanager_thread(void * arg);
-
+void *pipe_thread(void *arg);
 /* ret holds the number of bytes read */
 char *receive_from_fd(int fd, int *ret);
 

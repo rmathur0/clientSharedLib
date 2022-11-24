@@ -237,7 +237,7 @@ void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, 
 	msgque_t *trav = *msghead;
 	msgque_t *temp = (msgque_t*)calloc(1, sizeof(msgque_t));
 	char *temp_id;
-        int rc = -1, num_peers = -1, con = -1;
+        int rc = -1;
 	temp->prev = temp->next = NULL;
 
         if (sid && *sid)
@@ -299,7 +299,7 @@ msgque_t *pop_from_msgq(msgque_t **head, int con)
 
 
 /* Add element in refque_t */
-void push_to_refq(refque_t **refhead, tsidque_t **idhead, long addr)
+void push_to_refq(refque_t **refhead, long addr)
 {
 	refque_t *trav = *refhead;
 	refque_t *node = (refque_t*)calloc(1,sizeof(refque_t));
