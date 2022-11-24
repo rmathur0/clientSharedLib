@@ -61,7 +61,7 @@ connect_now:            if ((conn = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
 	return gconn_list;
 }
 
-void monitor_conn(configurator *cfg)
+void monitor_sock_conn(configurator *cfg)
 {
 	int i = 0, rc = -1, err = 0;
         int keepalive = 1, keepcnt = 5, keepidle = 30, keepintvl = 120;
@@ -144,6 +144,7 @@ void add_entry_idq(tsidque_t **head, char *tid, char *sid)
 	char *temp_id;
 	tsidque_t *node = *head;
 	int rc = -1, num_peers = -1, con = -1;
+	temp->prev = temp->next = NULL;
 
 	if (sid && *sid)
         {
@@ -206,11 +207,11 @@ void rem_expired_idq(tsidque_t **head)
 		gettimeofday(&now, NULL);
 		if ( (node->ETime.tv_sec < now.tv_sec) || ((node->ETime.tv_sec == now.tv_sec) && (node->ETime.tv_usec < now.tv_usec)) )
 		{
-			/* Single entry */
+			/* First element */
 			if (node->prev == NULL) {
 				free(node->id);
 				free(node);
-				*head = NULL;
+				*head = node->next;
 				break;
 			}
 			else if (node->next == NULL) { /* Last element */
@@ -237,6 +238,7 @@ void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, 
 	msgque_t *temp = (msgque_t*)calloc(1, sizeof(msgque_t));
 	char *temp_id;
         int rc = -1, num_peers = -1, con = -1;
+	temp->prev = temp->next = NULL;
 
         if (sid && *sid)
         {
@@ -279,7 +281,7 @@ msgque_t *pop_from_msgq(msgque_t **head, int con)
 	if (temp == NULL)
 		return NULL;
 	if ((temp->prev == NULL) && (temp->conn == con)) {
-		*head = NULL;
+		*head = temp->next;
 		return temp;
 	}
 	while(temp->next != NULL)
@@ -293,4 +295,38 @@ msgque_t *pop_from_msgq(msgque_t **head, int con)
 		temp = temp->next;
 	}
 	return temp;
+}
+
+
+/* Add element in refque_t */
+void push_to_refq(refque_t **refhead, tsidque_t **idhead, long addr)
+{
+	refque_t *trav = *refhead;
+	refque_t *node = (refque_t*)calloc(1,sizeof(refque_t));
+	node->addr = addr;
+	node->next = node->prev = NULL;
+
+	if(trav == NULL)
+	{
+		*refhead = node;
+		return;
+	}
+	while(trav->next != NULL)
+		trav = trav->next;
+	trav->next = node;
+	node->prev = trav;
+}
+
+/* Pop element from refque_t for a connection*/
+long pop_from_refq(refque_t **head)
+{
+	refque_t *temp = *head;
+	long addr;
+
+	if(temp == NULL)
+		return 0;
+	*head = temp->next;
+	addr = temp->addr;
+	free(temp);
+	return(addr);
 }

@@ -1,3 +1,6 @@
+/*
+ * Contains information about the data containers and their associated operations
+ */
 #ifndef __TASK_H_
 #define __TASK_H_
 
@@ -6,8 +9,7 @@
 #define KEY_SIZE 256
 #define EXPIRY 120
 
-struct msgq;
-
+/* Structure to hold peer connection info */
 typedef struct {
 	int fd;
 	int state;
@@ -41,6 +43,12 @@ typedef struct refque {
 	struct refque *next;
 } refque_t;
 
+/* Create peers in con_t */
+con_t *create_peers(configurator *cfg);
+
+/* Monitor peers on con_t */
+void monitor_sock_conn(configurator *cfg);
+
 /* Check if provided ID is present in the connection Q */
 int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn);
 
@@ -53,16 +61,16 @@ void update_entry_idq(tsidque_t **head, char *id);
 /* Del expired element in this Q */
 void rem_expired_idq(tsidque_t **head);
 
-/* Create peers in con_t */
-con_t *create_peers(configurator *cfg);
-
-/* Monitor peers on con_t */
-void monitor_conn(configurator *cfg);
-
 /* Add element in msgque_t */
 void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, int len, int conn, char *data);
 
 /* Pop element from msgque_t for a connection*/
 msgque_t *pop_from_msgq(msgque_t **head, int con); 
+
+/* Add element in refque_t */
+void push_to_refq(refque_t **refhead, tsidque_t **idhead, long addr);
+
+/* Pop element from refque_t for a connection*/
+long pop_from_refq(refque_t **head);
 
 #endif
