@@ -5,9 +5,12 @@
 
 #define BLOCK_SIZE 1024
 
+/* Common data */
 configurator *ref_gcfg;
 con_t *gcl;
-msgque_t *gmsgq, *gtsidq, *grefq;
+msgque_t *gmsgq;
+tsidque_t *gtsidq;
+refque_t *grefq;
 
 /* Signal handler function (defined below). */
 void sighandler(int signal);
@@ -42,14 +45,22 @@ void *monitor_thread(void *arg) {
 void *worker_thread(void *arg) {
 	con_t *c = (con_t*)arg;
 	char* message;
-	int rc = 0,fd = 0, activity = -1, max_fd = 0;
+	int rc = 0, activity = -1, max_fd = 0;
+	long addr;
         fd_set read_fds, write_fds, except_fds;
+	struct timeval tv;
+	msgque_t *node;
+
+	tv.tv_sec=READ_SEC_TO;
+	tv.tv_usec=READ_USEC_TO;
 
         puts("\nInside worker thread\n");
         while(1)
         {
 		build_fd_sets(c->fd, &read_fds, &write_fds, &except_fds);
-                int activity = select(max_fd + 1, &read_fds, NULL, &except_fds, NULL);
+		if (max_fd < c->fd)
+			max_fd = c->fd;
+                activity = select(max_fd + 1, &read_fds, NULL, &except_fds, &tv);
 		printf("\nCame out of select systemcall for peer [%d] & connection [%d].\n",c->peer_id, c->fd);
                 switch (activity)
                 {
@@ -68,11 +79,21 @@ void *worker_thread(void *arg) {
                                         sleep(10);
                                 default:
                                         printf("\n Received string: [%s]\n",message);
-                                        /* TBD on what to do with the received msg and clean the buffer */
+					addr = message;
+					/* ToDo: Acquire lock on refque */
+					push_to_refq(&grefq, addr);
                                 }
                         }
+			else if (FD_ISSET(c->fd, &except_fds))
+			{
+				printf ("\nException occurred on peer [%d] & connection [%d].\n",c->peer_id, c->fd);
+				close(c->fd);
+				c->state = 0;
+			}
 
                 }
+		/* ToDo: Acquire lock on msgque and tsidque */
+		node = pop_from_msgq(&gmsgq, c->peer_id);
                 printf ("\nInside manage_thread loop.\n");
         }
         pthread_exit(NULL);
@@ -156,7 +177,7 @@ fifo:
 	while(1)
 	{
         	memset(pbuf, 0, 9);
-        	read_bytes = read(fd, pbuf, total_size);
+        	read_bytes = read(pip, pbuf, total_size);
         	if (read_bytes == 0) {
                 	rc = 0;
                 	printf ("\nRead failed for Fifo_ingress. Trying to re-open.\n");
@@ -175,7 +196,7 @@ fifo:
 
 void *snd_pipe_thread(void *arg)
 {
-        int rc = 0,pip = 0, activity = -1, max_fd = 0 ;
+        int rc = 0,pip = 0, activity = -1 ;
         /* TODO change pbuf tyoe from char to xml structure */
         long val;
 
@@ -307,7 +328,9 @@ void *qmanager_thread(void * arg)
 
 	while(1)
 	{
-		printf ("\nInside qmanager_thread loop.");
+		printf ("\nTimer checking expired TSIDs.\n");
+		/* ToDo: Acquire lock on refque */
+		rem_expired_idq(&gtsidq);
 		sleep(3);
 	}
 	return NULL;

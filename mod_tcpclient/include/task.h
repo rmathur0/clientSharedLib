@@ -7,7 +7,13 @@
 #define MAX_BUF 2050
 #define ID_SIZE 128
 #define KEY_SIZE 256
+
+/* ID expiration time */
 #define EXPIRY 120
+
+/* Socket read timeout */
+#define READ_SEC_TO 1
+#define READ_USEC_TO 0
 
 /* Structure to hold peer connection info */
 typedef struct {
