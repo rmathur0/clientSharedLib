@@ -274,4 +274,23 @@ void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, 
 /* Pop element from msgque_t for a connection*/
 msgque_t *pop_from_msgq(msgque_t **head, int con)
 {
+	msgque_t *temp = *head;
+	
+	if (temp == NULL)
+		return NULL;
+	if ((temp->prev == NULL) && (temp->conn == con)) {
+		*head = NULL;
+		return temp;
+	}
+	while(temp->next != NULL)
+	{
+		if (temp->conn == con)
+		{
+			temp->prev->next = temp->next;
+			temp->next->prev = temp->prev;
+			break;
+		}
+		temp = temp->next;
+	}
+	return temp;
 }

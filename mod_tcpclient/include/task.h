@@ -34,7 +34,12 @@ typedef struct msgque {
 	struct msgque *next;
 } msgque_t;
 
-
+/* List of heap addresses pointing to containing received messages from socket, to be send to PIPE */
+typedef struct refque {
+	long addr;
+	struct refque *prev;
+	struct refque *next;
+} refque_t;
 
 /* Check if provided ID is present in the connection Q */
 int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn);

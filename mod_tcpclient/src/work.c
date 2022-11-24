@@ -51,6 +51,7 @@ void *worker_thread(void *arg) {
         {
 		build_fd_sets(c->fd, &read_fds, &write_fds, &except_fds);
                 int activity = select(max_fd + 1, &read_fds, NULL, &except_fds, NULL);
+		printf("\nCame out of select systemcall for peer [%d] & connection [%d].\n",c->peer_id, c->fd);
                 switch (activity)
                 {
                 case -1:
@@ -213,22 +214,33 @@ void *generic_receive_from_fd(int fd, int *ret)
 	return read_buf;
 }
 
+int send_to_fd(int fd, char *buf, int len);
+{
+	int sent = 0, total_sent = 0;
 
+	while(total_sent < len)
+	{
+		sent = send(fd, buf+total_sent, len-total_sent, MSG_DONTWAIT|MSG_NOSIGNAL);
+		total_sent += sent;
+		if (sent == -1)
+			return -1;
+	}
+	return total_sent;
+}
 
 char *receive_from_fd(int fd, int *ret)
 {
-	int i = 0, read_bytes = 0;
+	int read_bytes = 0;
         char *read_buf=NULL, lenbuf[5];
         int total_read = 0, total_size = 4, received = 0, burst_len = 0;
 	
-	ret = &i;
+	ret = &read_bytes;
 	memset(lenbuf, 0, 5);
 again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
         if(read_bytes!= total_size)
         {
         	if (read_bytes == 0) {
                 	printf("\nPIPE broken, attempting to create/join again.\n");
-                        i = 0;
 			return NULL;
                 } else if (read_bytes < 0) {
                         if(errno == EWOULDBLOCK || errno == EAGAIN|| errno == EINTR) {
@@ -264,7 +276,6 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
                 }
         }
         printf ("\nReceived msg: %s\n", read_buf);
-	i = received;
 	return read_buf;
 }
 
