@@ -2,13 +2,12 @@
 #include "../include/module.h"
 #include "../include/task.h"
 #include "../include/work.h"
-#define FIFO "/tmp/myfifo"
 
 #define BLOCK_SIZE 1024
 
 configurator *ref_gcfg;
 con_t *gcl;
-msgque_t *gmq;
+msgque_t *gmsgq, *gtsidq, *grefq;
 
 /* Signal handler function (defined below). */
 void sighandler(int signal);
@@ -82,7 +81,7 @@ void *worker_thread(void *arg) {
 int manage(configurator *cfg)
 {
 	int i, rc ;
-	pthread_t manager_t, monit_t, *worker_t, pipe_t;
+	pthread_t manager_t, monit_t, *worker_t, pipe_t[2];
 
 	ref_gcfg = cfg;
 	gcl = create_peers(ref_gcfg);
@@ -124,60 +123,74 @@ int manage(configurator *cfg)
 
 	/* Thread for PIPE communication */
 	printf ("\nCreating pipe thread\n");
-        rc = pthread_create(&pipe_t, NULL, pipe_thread, NULL);
+        rc = pthread_create(&pipe_t[0], NULL, rcv_pipe_thread, NULL);
         if (rc != 0)
         {
                 perror("pthread_create failed\n");
                 exit (1);
         }
-        pthread_detach(pipe_t);
+        pthread_detach(pipe_t[0]);
+        rc = pthread_create(&pipe_t[1], NULL, snd_pipe_thread, NULL);
+        if (rc != 0)
+        {       
+                perror("pthread_create failed\n");
+                exit (1);
+        }
+        pthread_detach(pipe_t[1]);
+	
+	printf("\nAll threads are created to function separately\n");
 	return 0;
 }
 
-void *pipe_thread(void *arg)
+void *rcv_pipe_thread(void *arg)
 {
-	int rc = 0,pip = 0, activity = -1, max_fd = 0 ;
-	fd_set pread_fds, pwrite_fds, pexcept_fds;
+	int rc = 0, pip = 0, len = 0 ;
+        int read_bytes = 0, total_size = 8;
+	long val;
 	/* TODO change pbuf tyoe from char to xml structure */
-	char *pbuf;
-	
+	char pbuf[9];
+	char *databuf, *tid, *sid;
 	puts("\nInside pipe_threads\n");
-	/* Create the FIFO if it does not exist */
-fifo:	mknod(FIFO, S_IFIFO|0640, 0);
-	pip = open(FIFO, O_RDONLY| O_NDELAY);
-	setnonblock(pip);
-	if (max_fd < pip)
-		max_fd = pip;
+fifo:	
+	pip = open(SL_RCVFIFO, O_RDONLY);
 	while(1)
 	{
-		build_fd_sets(pip, &pread_fds, &pwrite_fds, &pexcept_fds);
-		int activity = select(max_fd + 1, &pread_fds, NULL, &pexcept_fds, NULL);
-		switch (activity)
-		{
-		case -1:
-		case 0:
-			perror("\nSelect failed.Exiting.\n");
-			exit(1);
-		default:
-			if (FD_ISSET(pip, &pread_fds))
-			{
-				pbuf = (char*)generic_receive_from_fd(pip, &rc);
-				switch(rc)
-				{
-				case 0:
-					goto fifo;
-				default:
-					printf("\n Received string: [%s]\n",pbuf);
-					/* TBD adding into  tsidque_t and  msgq_t */
-				}
-			}
-		
-		}
-		printf ("\nInside manage_thread loop.\n");
-		sleep(3);
+        	memset(pbuf, 0, 9);
+        	read_bytes = read(fd, pbuf, total_size);
+        	if (read_bytes == 0) {
+                	rc = 0;
+                	printf ("\nRead failed for Fifo_ingress. Trying to re-open.\n");
+			goto fifo;
+        	}
+        	val = atol(pbuf);
+        	databuf = (char *)val;
+		/* ToDo: Acquire lock to add element in the msgque_t and tsidque_t 
+ 		 * ToDo: tid and sid needs to be set inside xml structure
+ 		 * */
+		len = strlen(databuf);
+		push_to_msgq(&gmsgq, &gtsidq, tid, sid, len, databuf);
 	}
 	pthread_exit(NULL);
 }
+
+void *snd_pipe_thread(void *arg)
+{
+        int rc = 0,pip = 0, activity = -1, max_fd = 0 ;
+        /* TODO change pbuf tyoe from char to xml structure */
+        long val;
+
+        puts("\nInside pipe_threads\n");
+fifo:
+        pip = open(SL_SNDFIFO, O_WRONLY);
+        while(1)
+        {
+		/* ToDo: Acquire lock with condition that there is atleast one element in refque */
+		val = pop_from_refq(&grefq);
+		write(pip, &val, sizeof(val));
+        }
+        pthread_exit(NULL);
+}
+
 
 int build_fd_sets(int fd, fd_set *read_fds, fd_set *write_fds, fd_set *except_fds)
 {
@@ -221,9 +234,18 @@ int send_to_fd(int fd, char *buf, int len)
 	while(total_sent < len)
 	{
 		sent = send(fd, buf+total_sent, len-total_sent, MSG_DONTWAIT|MSG_NOSIGNAL);
-		total_sent += sent;
-		if (sent == -1)
+		if (sent < 0)
+		{
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				continue;
+			else
+				return -1;
+		} else if (sent == 0)
+		{
+			printf("\nsend() returned 0 bytes. It seems that peer can't accept data right now. Try again later.\n");
 			return -1;
+		}
+		total_sent += sent;
 	}
 	return total_sent;
 }

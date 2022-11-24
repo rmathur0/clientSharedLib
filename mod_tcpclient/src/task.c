@@ -123,9 +123,10 @@ int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn)
 	return 0;
 }
 
-void update_entry_idq(tsidque_t **head, char *id)
+int update_entry_idq(tsidque_t **head, char *id)
 {
 	tsidque_t *temp = *head;
+
 	while(temp->next != NULL)
 	{
 		if ( strcmp(id, temp->id) == 0)
@@ -133,17 +134,18 @@ void update_entry_idq(tsidque_t **head, char *id)
 			gettimeofday(&temp->ATime, NULL);
 			temp->ETime = temp->ATime;
 			temp->ETime.tv_sec+= EXPIRY;
-			return;
+			return temp->conn;
 		}
 	}
+	return -1;
 }
 
-void add_entry_idq(tsidque_t **head, char *tid, char *sid)
+int add_entry_idq(tsidque_t **head, char *tid, char *sid)
 {
 	tsidque_t *temp = (tsidque_t*)calloc(1, sizeof(tsidque_t));
 	char *temp_id;
-	tsidque_t *node = *head;
-	int rc = -1, num_peers = -1, con = -1;
+	tsidque_t *trav = *head;
+	int rc = -1, num_peers = -1, con = -1, ret = -1;
 	temp->prev = temp->next = NULL;
 
 	if (sid && *sid)
@@ -166,9 +168,14 @@ void add_entry_idq(tsidque_t **head, char *tid, char *sid)
 	num_peers = get_peers();
 	rc = is_ID_present_idq(head, tid, sid, &con);
 	if (rc == 1)
-		update_entry_idq(head, temp_id);
+	{
+		ret = update_entry_idq(head, temp_id);
+		if (ret == -1)
+			goto assign_conn;
+		temp->conn = con;
+	}
 	else {
-		num_peers = get_peers();
+assign_conn:	num_peers = get_peers();
 reassign_conn:	con = glast_con_rr % num_peers;
 		if (gconn_list[con].state == 1)
 			temp->conn = con;
@@ -182,16 +189,17 @@ reassign_conn:	con = glast_con_rr % num_peers;
 		if (glast_con_rr == num_peers)
 			glast_con_rr = 0;
 	}
-	if (node == NULL)
+	if (trav == NULL)
 	{
 		*head = temp;
 		temp->prev = NULL;
-		return;
+		return con;
 	}
-	while(node->next != NULL)
-		node = node->next;
-	node->next = temp;
-	temp->prev = node;
+	while(trav->next != NULL)
+		trav = trav->next;
+	trav->next = temp;
+	temp->prev = trav;
+	return con;
 }
 
 void rem_expired_idq(tsidque_t **head)
@@ -232,12 +240,12 @@ void rem_expired_idq(tsidque_t **head)
 
 
 /* Add element in msgque_t */
-void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, int len, int conn, char *data)
+void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, int len, char *data)
 {
 	msgque_t *trav = *msghead;
 	msgque_t *temp = (msgque_t*)calloc(1, sizeof(msgque_t));
 	char *temp_id;
-        int rc = -1;
+        int rc = -1, ret = -1, con = -1;
 	temp->prev = temp->next = NULL;
 
         if (sid && *sid)
@@ -254,12 +262,16 @@ void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, 
 	temp->data = data;
 	temp->len = len;
 	strcpy(temp->id, temp_id);
-	temp->conn = conn;
+	temp->conn = con;
 	rc = is_ID_present_idq(idhead, tid, sid, &temp->conn);
 	if (rc == 1)
-		update_entry_idq(idhead, temp_id);
+	{
+		ret = update_entry_idq(idhead, temp_id);
+		if (ret == -1)
+			goto add;
+	}
 	else
-		add_entry_idq(idhead, tid, sid);
+add:		temp->conn = add_entry_idq(idhead, tid, sid);
 	
 	if (trav == NULL)
         {

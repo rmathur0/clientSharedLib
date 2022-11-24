@@ -1,6 +1,8 @@
 #ifndef __MODULE_H
 #define __MODULE_H
 
+#define SL_RCVFIFO "Fifo_ingress"
+#define SL_SNDFIFO "Fifo_egress"
 
 typedef struct _config_endpoints
 {
