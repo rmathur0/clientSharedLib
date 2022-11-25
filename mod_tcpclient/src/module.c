@@ -36,3 +36,14 @@ int get_peers()
 {
     return gconfig.num_peers;
 }
+
+
+int register_resp_cb(TransactionCallback_Res_f *callback_f,void *callback_param)
+{
+	return (register_callback_responses(callback_f, callback_param));
+}
+
+int register_req_cb(TransactionCallback_Req_f *callback_f,void *callback_param)
+{
+	return (register_callback_requests(callback_f, callback_param));
+}

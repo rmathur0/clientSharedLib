@@ -5,8 +5,6 @@
 #define __TASK_H_
 
 #define MAX_BUF 2050
-#define ID_SIZE 128
-#define KEY_SIZE 256
 
 /* ID expiration time */
 #define EXPIRY 120
@@ -22,6 +20,7 @@ typedef struct {
 	int peer_id;
 } con_t;
 
+
 /* Queue to determine Conn based on TID+SID */
 typedef struct idque {
 	char *id;
@@ -34,7 +33,7 @@ typedef struct idque {
 
 /* DS to hold received unit on PIPE/Socket */
 typedef struct msgque {
-	char *data;
+	request_t *data;
 	char id[KEY_SIZE];
 	int len;
 	int conn;
@@ -57,6 +56,7 @@ void monitor_sock_conn(configurator *cfg);
 
 /* Check if provided ID is present in the connection Q */
 int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn);
+int lookup_ID_idq(tsidque_t **head, char *tid, char *sid, long *elapsed_msecs);
 
 /* Add new element in this Q */
 int add_entry_idq(tsidque_t **head, char *tid, char *sid);
@@ -79,4 +79,5 @@ void push_to_refq(refque_t **refhead, long addr);
 /* Pop element from refque_t for a connection*/
 long pop_from_refq(refque_t **head);
 
+int parse_xml_attribute(char *in,int in_len, char *startKey, char *endKey, char *out, int *out_len);
 #endif

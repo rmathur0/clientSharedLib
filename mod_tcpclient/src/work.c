@@ -10,6 +10,8 @@ configurator *ref_gcfg;
 con_t *gcl;
 msgque_t *gmsgq;
 tsidque_t *gtsidq;
+res_xml_cb res_cb;
+req_xml_cb req_cb;
 
 /* Signal handler function (defined below). */
 void sighandler(int signal);
@@ -30,10 +32,13 @@ void *monitor_thread(void *arg) {
 
 void *recv_worker_thread(void *arg) {
 	con_t *c = (con_t*)arg;
-	char* message;
-	int rc = 0, activity = -1, max_fd = 0;
+	char* message = NULL, *out = NULL, *resp = NULL, *tid = NULL, *sid = NULL;
+	int rc = 0, activity = -1, max_fd = 0, out_len = 0, retcode = 0;
         fd_set read_fds, write_fds, except_fds;
 	struct timeval tv;
+	long elapsed_msecs;
+	request_t *req;
+	response_t *res;
 
 	tv.tv_sec=READ_SEC_TO;
 	tv.tv_usec=READ_USEC_TO;
@@ -41,6 +46,7 @@ void *recv_worker_thread(void *arg) {
         puts("\nInside worker thread\n");
         while(1)
         {
+		elapsed_msecs = 0;
 		build_fd_sets(c->fd, &read_fds, &write_fds, &except_fds);
 		if (max_fd < c->fd)
 			max_fd = c->fd;
@@ -59,9 +65,42 @@ void *recv_worker_thread(void *arg) {
                                 switch(rc)
                                 {
                                 case 0:
+					if (message)
+						free(message);
+						message = NULL;
 					/* It appears connection is lost, sleep for 10 sec and let monitor thread recreate the conection */
                                         sleep(10);
                                 default:
+					parse_xml_attribute(message, rc, "<RESP_CODE>", "</RESP_CODE>", out, &out_len);
+					if (out_len > 0)
+					{
+					    resp = (char*)calloc(out_len+1, sizeof(char));
+					    memcpy(resp, out, out_len);
+					    retcode = atoi(resp);
+					    free(resp); resp = NULL;
+					    out = NULL; out_len = 0;
+					    parse_xml_attribute(message, rc, "<SID>", "</SID>", out, &out_len);
+					    sid = (char*)calloc(out_len+1, sizeof(char));
+					    memcpy(sid, out, out_len);
+					    out = NULL; out_len = 0;
+					    parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
+					    tid = (char*)calloc(out_len+1, sizeof(char));
+                                            memcpy(sid, out, out_len);
+					    strcpy(res->id, tid);
+					    strcat(res->id, sid);
+					    if ((lookup_ID_idq(&gtsidq, tid, sid, &elapsed_msecs)) == 1)
+					    {
+						res = (response_t*)calloc(1, sizeof(response_t));
+						strcpy(res->id, tid);
+						strcat(res->id, sid);
+						res->retcode = retcode;
+						res->query_res = message; 
+						res_cb.reg_res_cb(0, res_cb.callback_param, res, elapsed_msecs);
+					    }
+					    free(tid); free(sid);
+					    tid = NULL; sid = NULL;
+					    out = NULL; out_len = 0;
+					}
                                         printf("\n Received string: [%s]\n",message);
 					/* ToDo: Parse the message, check whether TSID contains any entry for this and then execute the callback */
                                 }
@@ -91,7 +130,7 @@ void *send_worker_thread(void *arg)
                 node = pop_from_msgq(&gmsgq, c->peer_id);
                 if (node == NULL)
                         continue;
-                send_to_fd(c->fd, node->data, node->len);
+                send_to_fd(c->fd, node->data->req_buf, node->len);
         }
         pthread_exit(NULL);
 }
@@ -319,4 +358,18 @@ void *qmanager_thread(void * arg)
 void sighandler(int signal) {
 	fprintf(stdout, "Received signal %d: %s.  Shutting down.\n", signal, strsignal(signal));
 	exit (1);
+}
+
+int register_callback_responses(TransactionCallback_Res_f *callback_f,void *callback_param)
+{
+	res_cb.reg_res_cb = callback_f;
+	res_cb.callback_param = callback_param;
+	return 1;
+}
+
+int register_callback_requests(TransactionCallback_Req_f *callback_f,void *callback_param)
+{
+	req_cb.reg_req_cb = callback_f;
+	req_cb.callback_param = callback_param;
+	return 1;
 }

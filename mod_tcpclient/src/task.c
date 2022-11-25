@@ -107,6 +107,8 @@ int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn)
 	}
 	else 
 	{
+		temp_id = (char*)calloc((strlen(tid) + 1), sizeof(char));
+                strcpy(temp_id, tid);
 		temp_id = tid;
 	}
 	while(temp->next != NULL)
@@ -122,6 +124,46 @@ int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn)
 	}
 	return 0;
 }
+
+int lookup_ID_idq(tsidque_t **head, char *tid, char *sid, long *elapsed_msecs)
+{
+        tsidque_t *temp = *head;
+        char *temp_id;
+	long time_elapsed = 0;
+	struct timeval curr;
+        *elapsed_msecs = time_elapsed;
+
+        if (*head == NULL)
+                return 0;
+        if (sid && *sid)
+        {
+                temp_id = (char*)calloc((strlen(tid) + strlen(sid) + 1), sizeof(char));
+                strcpy(temp_id, tid);
+                strcat(temp_id, sid);
+        }
+        else
+        {
+                temp_id = (char*)calloc((strlen(tid) + 1), sizeof(char));
+                strcpy(temp_id, tid);
+                temp_id = tid;
+        }
+        while(temp->next != NULL)
+        {
+
+                if ( strcmp(temp_id, temp->id) == 0)
+                {
+                        gettimeofday(&curr, NULL);
+			time_elapsed = (curr.tv_sec - temp->ATime.tv_sec)*1000 + (curr.tv_usec - temp->ATime.tv_usec)/1000;
+			*elapsed_msecs = time_elapsed;
+                        free(temp_id);
+                        return 1;
+                }
+                temp = temp->next;
+        }
+        return 0;
+
+}
+
 
 int update_entry_idq(tsidque_t **head, char *id)
 {
@@ -314,3 +356,27 @@ msgque_t *pop_from_msgq(msgque_t **head, int con)
 	return temp;
 }
 
+
+int parse_xml_attribute(char *in,int in_len, char *startKey, char *endKey, char *out, int *out_len)
+{
+	int i=0, j;
+	for(i=0;i<in_len; ++i)
+	{
+		if(strncmp(&in[i], startKey, strlen(startKey)) == 0)
+		{
+			i+=strlen(startKey);
+			j=i;
+		}
+		else if(strncmp(&in[i], endKey,strlen(endKey)) == 0)
+		{
+			printf("\nKeyName:%s, KeyValue: %.*s\n", startKey,i-j,in+j);
+			*out_len=i-j;
+			out=in+j;
+			return 1;
+		}
+
+	}
+	*out_len=0;
+	out = NULL;
+	return 0;
+}
