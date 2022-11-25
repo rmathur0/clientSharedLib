@@ -10,23 +10,9 @@ configurator *ref_gcfg;
 con_t *gcl;
 msgque_t *gmsgq;
 tsidque_t *gtsidq;
-refque_t *grefq;
 
 /* Signal handler function (defined below). */
 void sighandler(int signal);
-
-/**
- *  * Set a socket to non-blocking mode.
- *   */
-static int setnonblock(int fd) {
-	int flags;
-
-	flags = fcntl(fd, F_GETFL);
-	if (flags < 0) return flags;
-	flags |= O_NONBLOCK;
-	if (fcntl(fd, F_SETFL, flags) < 0) return -1;
-	return 0;
-}
 
 
 void *monitor_thread(void *arg) {
@@ -34,7 +20,7 @@ void *monitor_thread(void *arg) {
         while(1)
         {
 		printf ("\nmonitoring TCP connections.\n");
-		monitor_conn(ref_gcfg);
+		monitor_sock_conn(ref_gcfg);
 		sleep(3);
 		/* Check MsgQ and tally with IDQ to choose best connection to send out the msg below */
         }
@@ -42,14 +28,12 @@ void *monitor_thread(void *arg) {
 }
 
 
-void *worker_thread(void *arg) {
+void *recv_worker_thread(void *arg) {
 	con_t *c = (con_t*)arg;
 	char* message;
 	int rc = 0, activity = -1, max_fd = 0;
-	long addr;
         fd_set read_fds, write_fds, except_fds;
 	struct timeval tv;
-	msgque_t *node;
 
 	tv.tv_sec=READ_SEC_TO;
 	tv.tv_usec=READ_USEC_TO;
@@ -79,9 +63,7 @@ void *worker_thread(void *arg) {
                                         sleep(10);
                                 default:
                                         printf("\n Received string: [%s]\n",message);
-					addr = message;
-					/* ToDo: Acquire lock on refque */
-					push_to_refq(&grefq, addr);
+					/* ToDo: Parse the message, check whether TSID contains any entry for this and then execute the callback */
                                 }
                         }
 			else if (FD_ISSET(c->fd, &except_fds))
@@ -92,20 +74,32 @@ void *worker_thread(void *arg) {
 			}
 
                 }
-		/* ToDo: Acquire lock on msgque and tsidque */
-		node = pop_from_msgq(&gmsgq, c->peer_id);
-		rc = send_to_fd(c->fd, node->data, node->len);
-		/* rc contains total bytes written on wire */
+        }
+        pthread_exit(NULL);
+}
 
-                printf ("\nInside manage_thread loop.\n");
+void *send_worker_thread(void *arg)
+{
+        /* TODO change pbuf tyoe from char to xml structure */
+        con_t *c = (con_t*)arg;
+	msgque_t *node;
+
+        puts("\nInside send_worker_thread\n");
+        while(1)
+        {
+                /* ToDo: Acquire lock on msgque and tsidque */
+                node = pop_from_msgq(&gmsgq, c->peer_id);
+                if (node == NULL)
+                        continue;
+                send_to_fd(c->fd, node->data, node->len);
         }
         pthread_exit(NULL);
 }
 
 int manage(configurator *cfg)
 {
-	int i, rc ;
-	pthread_t manager_t, monit_t, *worker_t, pipe_t[2];
+	int i, rc, j ;
+	pthread_t manager_t, monit_t, *worker_t, pipe_t;
 
 	ref_gcfg = cfg;
 	gcl = create_peers(ref_gcfg);
@@ -123,16 +117,24 @@ int manage(configurator *cfg)
 
 	/* Thread for far right peers communication */
 	printf("\nCreating worker threads.\n");
-	worker_t = (pthread_t*)calloc(ref_gcfg->num_peers, sizeof(pthread_t));
-	for (i = 0; i < ref_gcfg->num_peers; i++)
+	worker_t = (pthread_t*)calloc(ref_gcfg->num_peers*2, sizeof(pthread_t));
+	for (i = 0, j = 0; i < ref_gcfg->num_peers; i++)
 	{
-		rc = pthread_create(&worker_t[i], NULL, worker_thread, &gcl[i]);
+		rc = pthread_create(&worker_t[j], NULL, recv_worker_thread, &gcl[i]);
 		if (rc != 0)
 		{
 			perror("pthread_create failed\n");
 			exit(1);
 		}
-		pthread_detach(worker_t[i]);
+		pthread_detach(worker_t[j]);
+		rc = pthread_create(&worker_t[j+1], NULL, send_worker_thread, &gcl[i]);
+                if (rc != 0)
+                {
+                        perror("pthread_create failed\n");
+                        exit(1);
+                }
+                pthread_detach(worker_t[j+1]);
+		j+= 2;
 	}
 
 	/* Thread for monitoring the connections to far right peers */
@@ -147,20 +149,13 @@ int manage(configurator *cfg)
 
 	/* Thread for PIPE communication */
 	printf ("\nCreating pipe thread\n");
-        rc = pthread_create(&pipe_t[0], NULL, rcv_pipe_thread, NULL);
+        rc = pthread_create(&pipe_t, NULL, rcv_pipe_thread, NULL);
         if (rc != 0)
         {
                 perror("pthread_create failed\n");
                 exit (1);
         }
-        pthread_detach(pipe_t[0]);
-        rc = pthread_create(&pipe_t[1], NULL, snd_pipe_thread, NULL);
-        if (rc != 0)
-        {       
-                perror("pthread_create failed\n");
-                exit (1);
-        }
-        pthread_detach(pipe_t[1]);
+        pthread_detach(pipe_t);
 	
 	printf("\nAll threads are created to function separately\n");
 	return 0;
@@ -168,7 +163,7 @@ int manage(configurator *cfg)
 
 void *rcv_pipe_thread(void *arg)
 {
-	int rc = 0, pip = 0, len = 0 ;
+	int pip = 0, len = 0 ;
         int read_bytes = 0, total_size = 8;
 	long val;
 	/* TODO change pbuf tyoe from char to xml structure */
@@ -182,7 +177,6 @@ fifo:
         	memset(pbuf, 0, 9);
         	read_bytes = read(pip, pbuf, total_size);
         	if (read_bytes == 0) {
-                	rc = 0;
                 	printf ("\nRead failed for Fifo_ingress. Trying to re-open.\n");
 			goto fifo;
         	}
@@ -197,23 +191,6 @@ fifo:
 	pthread_exit(NULL);
 }
 
-void *snd_pipe_thread(void *arg)
-{
-        int rc = 0,pip = 0, activity = -1 ;
-        /* TODO change pbuf tyoe from char to xml structure */
-        long val;
-
-        puts("\nInside pipe_threads\n");
-fifo:
-        pip = open(SL_SNDFIFO, O_WRONLY);
-        while(1)
-        {
-		/* ToDo: Acquire lock with condition that there is atleast one element in refque */
-		val = pop_from_refq(&grefq);
-		write(pip, &val, sizeof(val));
-        }
-        pthread_exit(NULL);
-}
 
 
 int build_fd_sets(int fd, fd_set *read_fds, fd_set *write_fds, fd_set *except_fds)

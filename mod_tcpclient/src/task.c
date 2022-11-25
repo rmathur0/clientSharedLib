@@ -226,6 +226,7 @@ void rem_expired_idq(tsidque_t **head)
 				node->prev->next = NULL;
 				free(node->id);
 				free(node);
+				*head = node->prev;
 				break;
 			} else {
 				node->prev->next = node->next;
@@ -296,6 +297,10 @@ msgque_t *pop_from_msgq(msgque_t **head, int con)
 		*head = temp->next;
 		return temp;
 	}
+	if ((temp->next == NULL) && (temp->conn == con)) {
+		*head = temp->prev;
+		return temp;
+	}
 	while(temp->next != NULL)
 	{
 		if (temp->conn == con)
@@ -309,36 +314,3 @@ msgque_t *pop_from_msgq(msgque_t **head, int con)
 	return temp;
 }
 
-
-/* Add element in refque_t */
-void push_to_refq(refque_t **refhead, long addr)
-{
-	refque_t *trav = *refhead;
-	refque_t *node = (refque_t*)calloc(1,sizeof(refque_t));
-	node->addr = addr;
-	node->next = node->prev = NULL;
-
-	if(trav == NULL)
-	{
-		*refhead = node;
-		return;
-	}
-	while(trav->next != NULL)
-		trav = trav->next;
-	trav->next = node;
-	node->prev = trav;
-}
-
-/* Pop element from refque_t for a connection*/
-long pop_from_refq(refque_t **head)
-{
-	refque_t *temp = *head;
-	long addr;
-
-	if(temp == NULL)
-		return 0;
-	*head = temp->next;
-	addr = temp->addr;
-	free(temp);
-	return(addr);
-}
