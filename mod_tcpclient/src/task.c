@@ -283,7 +283,7 @@ void rem_expired_idq(tsidque_t **head)
 
 
 /* Add element in msgque_t */
-void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, int len, char *data)
+void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, int len, request_t *data)
 {
 	msgque_t *trav = *msghead;
 	msgque_t *temp = (msgque_t*)calloc(1, sizeof(msgque_t));

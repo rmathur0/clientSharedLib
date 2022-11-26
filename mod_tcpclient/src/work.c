@@ -70,6 +70,7 @@ void *recv_worker_thread(void *arg) {
 						message = NULL;
 					/* It appears connection is lost, sleep for 10 sec and let monitor thread recreate the conection */
                                         sleep(10);
+					break;
                                 default:
 					parse_xml_attribute(message, rc, "<RESP_CODE>", "</RESP_CODE>", out, &out_len);
 					if (out_len > 0)
@@ -86,8 +87,6 @@ void *recv_worker_thread(void *arg) {
 					    parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
 					    tid = (char*)calloc(out_len+1, sizeof(char));
                                             memcpy(sid, out, out_len);
-					    strcpy(res->id, tid);
-					    strcat(res->id, sid);
 					    if ((lookup_ID_idq(&gtsidq, tid, sid, &elapsed_msecs)) == 1)
 					    {
 						res = (response_t*)calloc(1, sizeof(response_t));
@@ -96,13 +95,32 @@ void *recv_worker_thread(void *arg) {
 						res->retcode = retcode;
 						res->query_res = message; 
 						res_cb.reg_res_cb(0, res_cb.callback_param, res, elapsed_msecs);
-					    }
+					    }else{
+						free(message); message = NULL;
+						}
 					    free(tid); free(sid);
 					    tid = NULL; sid = NULL;
 					    out = NULL; out_len = 0;
 					}
-                                        printf("\n Received string: [%s]\n",message);
-					/* ToDo: Parse the message, check whether TSID contains any entry for this and then execute the callback */
+					else {
+					    parse_xml_attribute(message, rc, "<SIP_CALLID>", "</SIP_CALLID>", out, &out_len);
+					    if (out_len > 0)
+					    {
+						resp = (char*)calloc(out_len+1, sizeof(char));
+                                                memcpy(resp, out, out_len);
+						if ((lookup_ID_idq(&gtsidq, resp, NULL, &elapsed_msecs)) == 1)
+						{
+						    req = (request_t*)calloc(1, sizeof(request_t));
+						    req->req_buf = message;
+						    req->msg_len = rc;
+						    req->no_transaction = 0;
+						    req->picked_up = 1;
+						    req_cb.reg_req_cb(0, req_cb.callback_param, req, elapsed_msecs);
+						}
+						free(resp); resp = NULL;
+					    }
+						out = NULL; out_len = 0;
+					}
                                 }
                         }
 			else if (FD_ISSET(c->fd, &except_fds))
@@ -131,6 +149,9 @@ void *send_worker_thread(void *arg)
                 if (node == NULL)
                         continue;
                 send_to_fd(c->fd, node->data->req_buf, node->len);
+		free(node->data->req_buf);
+		free(node->data);
+		free(node);
         }
         pthread_exit(NULL);
 }
@@ -207,7 +228,8 @@ void *rcv_pipe_thread(void *arg)
 	long val;
 	/* TODO change pbuf tyoe from char to xml structure */
 	char pbuf[9];
-	char *databuf, *tid, *sid;
+	char  *tid, *sid;
+	request_t *req;
 	puts("\nInside pipe_threads\n");
 fifo:	
 	pip = open(SL_RCVFIFO, O_RDONLY);
@@ -220,12 +242,11 @@ fifo:
 			goto fifo;
         	}
         	val = atol(pbuf);
-        	databuf = (char *)val;
+        	req = (request_t *)val;
 		/* ToDo: Acquire lock to add element in the msgque_t and tsidque_t 
  		 * ToDo: tid and sid needs to be set inside xml structure
  		 * */
-		len = strlen(databuf);
-		push_to_msgq(&gmsgq, &gtsidq, tid, sid, len, databuf);
+		push_to_msgq(&gmsgq, &gtsidq, req->id, NULL, req->msg_len, req);
 	}
 	pthread_exit(NULL);
 }
@@ -350,7 +371,7 @@ void *qmanager_thread(void * arg)
 		printf ("\nTimer checking expired TSIDs.\n");
 		/* ToDo: Acquire lock on refque */
 		rem_expired_idq(&gtsidq);
-		sleep(3);
+		sleep(30);
 	}
 	return NULL;
 }

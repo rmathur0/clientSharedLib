@@ -7,10 +7,10 @@
 #define MAX_BUF 2050
 
 /* ID expiration time */
-#define EXPIRY 120
+#define EXPIRY 7200
 
 /* Socket read timeout */
-#define READ_SEC_TO 1
+#define READ_SEC_TO 5
 #define READ_USEC_TO 0
 
 /* Structure to hold peer connection info */
@@ -35,7 +35,7 @@ typedef struct idque {
 typedef struct msgque {
 	request_t *data;
 	char id[KEY_SIZE];
-	int len;
+	int len; /* length of data->req_buf */
 	int conn;
 	struct msgque *prev;
 	struct msgque *next;
@@ -68,7 +68,7 @@ int update_entry_idq(tsidque_t **head, char *id);
 void rem_expired_idq(tsidque_t **head);
 
 /* Add element in msgque_t */
-void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, int len, char *data);
+void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, int len, request_t *data);
 
 /* Pop element from msgque_t for a connection*/
 msgque_t *pop_from_msgq(msgque_t **head, int con); 
