@@ -13,6 +13,8 @@ tsidque_t *gtsidq;
 res_xml_cb res_cb;
 req_xml_cb req_cb;
 
+pthread_mutex_t qtex = PTHREAD_MUTEX_INITIALIZER;
+
 /* Signal handler function (defined below). */
 void sighandler(int signal);
 
@@ -23,8 +25,7 @@ void *monitor_thread(void *arg) {
         {
 		printf ("\nmonitoring TCP connections.\n");
 		monitor_sock_conn(ref_gcfg);
-		sleep(3);
-		/* Check MsgQ and tally with IDQ to choose best connection to send out the msg below */
+		sleep(MONITORING_PERIOD);
         }
         pthread_exit(NULL);
 }
@@ -46,6 +47,8 @@ void *recv_worker_thread(void *arg) {
         puts("\nInside worker thread\n");
         while(1)
         {
+		if (c->state != 1)
+			sleep(MONITORING_PERIOD);
 		elapsed_msecs = 0;
 		build_fd_sets(c->fd, &read_fds, &write_fds, &except_fds);
 		if (max_fd < c->fd)
@@ -149,8 +152,13 @@ void *send_worker_thread(void *arg)
         puts("\nInside send_worker_thread\n");
         while(1)
         {
+		if (c->state != 1)
+                        sleep(MONITORING_PERIOD);
+
                 /* ToDo: Acquire lock on msgque and tsidque */
+		pthread_mutex_lock( &qtex );
                 node = pop_from_msgq(&gmsgq, c->peer_id);
+		pthread_mutex_unlock( &qtex );
                 if (node == NULL)
                         continue;
                 send_to_fd(c->fd, node->data->req_buf, node->len);
@@ -168,6 +176,7 @@ int manage(configurator *cfg)
 
 	ref_gcfg = cfg;
 	gcl = create_peers(ref_gcfg);
+	sleep(1);
 	printf("\nTCP connections up\n");
 	
 	/* Thread to manage queues */
@@ -179,7 +188,7 @@ int manage(configurator *cfg)
 		exit (1);
 	}
 	pthread_detach(manager_t);
-
+	sleep(1);
 	/* Thread for far right peers communication */
 	printf("\nCreating worker threads.\n");
 	worker_t = (pthread_t*)calloc(ref_gcfg->num_peers*2, sizeof(pthread_t));
@@ -201,7 +210,7 @@ int manage(configurator *cfg)
                 pthread_detach(worker_t[j+1]);
 		j+= 2;
 	}
-
+	sleep(1);
 	/* Thread for monitoring the connections to far right peers */
 	printf ("\nCreating monitor thread\n");
         rc = pthread_create(&monit_t, NULL, monitor_thread, NULL);
@@ -211,7 +220,7 @@ int manage(configurator *cfg)
                 exit (1);
         }
         pthread_detach(monit_t);
-
+	sleep(1);
 	/* Thread for PIPE communication */
 	printf ("\nCreating pipe thread\n");
         rc = pthread_create(&pipe_t, NULL, rcv_pipe_thread, NULL);
@@ -221,7 +230,7 @@ int manage(configurator *cfg)
                 exit (1);
         }
         pthread_detach(pipe_t);
-	
+	sleep(1);	
 	printf("\nAll threads are created to function separately\n");
 	return 0;
 }
@@ -251,7 +260,9 @@ fifo:
 		/* ToDo: Acquire lock to add element in the msgque_t and tsidque_t 
  		 * ToDo: tid and sid needs to be set inside xml structure
  		 * */
+		pthread_mutex_lock( &qtex );
 		push_to_msgq(&gmsgq, &gtsidq, req->id, NULL, req->msg_len, req);
+		pthread_mutex_unlock( &qtex );
 	}
 	pthread_exit(NULL);
 }
@@ -374,9 +385,10 @@ void *qmanager_thread(void * arg)
 	while(1)
 	{
 		printf ("\nTimer checking expired TSIDs.\n");
-		/* ToDo: Acquire lock on refque */
+		pthread_mutex_lock( &qtex );
 		rem_expired_idq(&gtsidq);
-		sleep(30);
+		pthread_mutex_unlock( &qtex );
+		sleep(MONITORING_PERIOD*2);
 	}
 	return NULL;
 }
