@@ -96,6 +96,7 @@ void *recv_worker_thread(void *arg) {
 						res->query_res = message; 
 						res_cb.reg_res_cb(0, res_cb.callback_param, res, elapsed_msecs);
 					    }else{
+						/* When timeout, don't call any cb fn */
 						free(message); message = NULL;
 						}
 					    free(tid); free(sid);
@@ -116,6 +117,10 @@ void *recv_worker_thread(void *arg) {
 						    req->no_transaction = 0;
 						    req->picked_up = 1;
 						    req_cb.reg_req_cb(0, req_cb.callback_param, req, elapsed_msecs);
+						}
+						else {
+						    /* When timeout, don't call any cb fn */
+						    free(message); message = NULL;
 						}
 						free(resp); resp = NULL;
 					    }
