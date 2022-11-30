@@ -34,7 +34,7 @@ void *monitor_thread(void *arg) {
 void *recv_worker_thread(void *arg) {
 	con_t *c = (con_t*)arg;
 	char* message = NULL, *out = NULL, *resp = NULL, *tid = NULL, *sid = NULL;
-	int rc = 0, activity = -1, max_fd = 0, out_len = 0, retcode = 0;
+	int rc = 0, activity = -1, max_fd = 0, out_len = 0, retcode = 0, lookup = 0;
         fd_set read_fds, write_fds, except_fds;
 	struct timeval tv;
 	long elapsed_msecs;
@@ -72,7 +72,7 @@ void *recv_worker_thread(void *arg) {
 						free(message);
 						message = NULL;
 					/* It appears connection is lost, sleep for 10 sec and let monitor thread recreate the conection */
-                                        sleep(10);
+                                        sleep(MONITORING_PERIOD);
 					break;
                                 default:
 					parse_xml_attribute(message, rc, "<RESP_CODE>", "</RESP_CODE>", out, &out_len);
@@ -90,7 +90,10 @@ void *recv_worker_thread(void *arg) {
 					    parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
 					    tid = (char*)calloc(out_len+1, sizeof(char));
                                             memcpy(sid, out, out_len);
-					    if ((lookup_ID_idq(&gtsidq, tid, sid, &elapsed_msecs)) == 1)
+					    pthread_mutex_lock( &qtex );
+					    lookup = lookup_ID_idq(&gtsidq, tid, sid, &elapsed_msecs);
+					    pthread_mutex_unlock( &qtex );
+					    if (lookup == 1)
 					    {
 						res = (response_t*)calloc(1, sizeof(response_t));
 						strcpy(res->id, tid);
@@ -112,7 +115,10 @@ void *recv_worker_thread(void *arg) {
 					    {
 						resp = (char*)calloc(out_len+1, sizeof(char));
                                                 memcpy(resp, out, out_len);
-						if ((lookup_ID_idq(&gtsidq, resp, NULL, &elapsed_msecs)) == 1)
+						pthread_mutex_lock( &qtex );
+						lookup = lookup_ID_idq(&gtsidq, resp, NULL, &elapsed_msecs);
+						pthread_mutex_unlock( &qtex );
+						if (lookup == 1)
 						{
 						    req = (request_t*)calloc(1, sizeof(request_t));
 						    req->req_buf = message;
