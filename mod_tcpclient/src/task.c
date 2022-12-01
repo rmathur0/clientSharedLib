@@ -40,7 +40,7 @@ connect_now:            if ((conn = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
                 server_addr.sin_port = htons(cfg->peers[i].port);
                 rc = connect(conn, (struct sockaddr *)&server_addr, sizeof(server_addr));
                 if (rc < 0) {
-                        printf ("\nConnect failed for [%s:%d] \n", cfg->peers[i].ip, cfg->peers[i].port);
+                        syslog (LOG_INFO,"\nConnect failed for [%s:%d] \n", cfg->peers[i].ip, cfg->peers[i].port);
                         if (retry == 1) {
 				perror("\nRetrying in 5 seconds.\n");
 				close(conn);
@@ -68,11 +68,11 @@ void monitor_sock_conn(configurator *cfg)
         struct sockaddr_in server_addr;
 	socklen_t len = sizeof (err);
 
-	printf ("\nmonitoring TCP connections.\n");
+	syslog (LOG_INFO,"\nmonitoring TCP connections.\n");
         for (i = 0; i < cfg->num_peers; i++) {
         	rc = getsockopt (gconn_list[i].fd, SOL_SOCKET, SO_ERROR, &err, &len);
         	if ((rc != 0)||(err != 0)) {
-        		printf ("\nerror getting getsockopt return code: %s and socket error: %s\n", strerror(rc), strerror(err));
+        		syslog (LOG_INFO,"\nerror getting getsockopt return code: %s and socket error: %s\n", strerror(rc), strerror(err));
         		close(gconn_list[i].fd);
         		gconn_list[i].state=0;
         		gconn_list[i].fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -369,7 +369,7 @@ int parse_xml_attribute(char *in,int in_len, char *startKey, char *endKey, char 
 		}
 		else if(strncmp(&in[i], endKey,strlen(endKey)) == 0)
 		{
-			printf("\nKeyName:%s, KeyValue: %.*s\n", startKey,i-j,in+j);
+			syslog(LOG_INFO,"\nKeyName:%s, KeyValue: %.*s\n", startKey,i-j,in+j);
 			*out_len=i-j;
 			out=in+j;
 			return 1;

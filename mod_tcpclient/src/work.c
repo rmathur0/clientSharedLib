@@ -23,7 +23,7 @@ void *monitor_thread(void *arg) {
         puts("\nInside monitor thread\n");
         while(1)
         {
-		printf ("\nmonitoring TCP connections.\n");
+		syslog (LOG_INFO,"\nmonitoring TCP connections.\n");
 		monitor_sock_conn(ref_gcfg);
 		sleep(MONITORING_PERIOD);
         }
@@ -54,7 +54,7 @@ void *recv_worker_thread(void *arg) {
 		if (max_fd < c->fd)
 			max_fd = c->fd;
                 activity = select(max_fd + 1, &read_fds, NULL, &except_fds, &tv);
-		printf("\nCame out of select systemcall for peer [%d] & connection [%d].\n",c->peer_id, c->fd);
+		syslog(LOG_INFO,"\nCame out of select systemcall for peer [%d] & connection [%d].\n",c->peer_id, c->fd);
                 switch (activity)
                 {
                 case -1:
@@ -139,7 +139,7 @@ void *recv_worker_thread(void *arg) {
                         }
 			else if (FD_ISSET(c->fd, &except_fds))
 			{
-				printf ("\nException occurred on peer [%d] & connection [%d].\n",c->peer_id, c->fd);
+				syslog (LOG_INFO,"\nException occurred on peer [%d] & connection [%d].\n",c->peer_id, c->fd);
 				close(c->fd);
 				c->state = 0;
 			}
@@ -183,10 +183,10 @@ int manage(configurator *cfg)
 	ref_gcfg = cfg;
 	gcl = create_peers(ref_gcfg);
 	sleep(1);
-	printf("\nTCP connections up\n");
+	syslog(LOG_INFO,"\nTCP connections up\n");
 	
 	/* Thread to manage queues */
-	printf ("\nCreating qmanager thread\n");
+	syslog (LOG_INFO,"\nCreating qmanager thread\n");
 	rc = pthread_create(&manager_t, NULL, qmanager_thread, NULL);
 	if (rc != 0)
 	{
@@ -196,7 +196,7 @@ int manage(configurator *cfg)
 	pthread_detach(manager_t);
 	sleep(1);
 	/* Thread for far right peers communication */
-	printf("\nCreating worker threads.\n");
+	syslog(LOG_INFO,"\nCreating worker threads.\n");
 	worker_t = (pthread_t*)calloc(ref_gcfg->num_peers*2, sizeof(pthread_t));
 	for (i = 0, j = 0; i < ref_gcfg->num_peers; i++)
 	{
@@ -218,7 +218,7 @@ int manage(configurator *cfg)
 	}
 	sleep(1);
 	/* Thread for monitoring the connections to far right peers */
-	printf ("\nCreating monitor thread\n");
+	syslog (LOG_INFO,"\nCreating monitor thread\n");
         rc = pthread_create(&monit_t, NULL, monitor_thread, NULL);
         if (rc != 0)
         {
@@ -228,7 +228,7 @@ int manage(configurator *cfg)
         pthread_detach(monit_t);
 	sleep(1);
 	/* Thread for PIPE communication */
-	printf ("\nCreating pipe thread\n");
+	syslog (LOG_INFO,"\nCreating pipe thread\n");
         rc = pthread_create(&pipe_t, NULL, rcv_pipe_thread, NULL);
         if (rc != 0)
         {
@@ -237,7 +237,7 @@ int manage(configurator *cfg)
         }
         pthread_detach(pipe_t);
 	sleep(1);	
-	printf("\nAll threads are created to function separately\n");
+	syslog(LOG_INFO,"\nAll threads are created to function separately\n");
 	return 0;
 }
 
@@ -258,7 +258,7 @@ fifo:
         	memset(pbuf, 0, 9);
         	read_bytes = read(pip, pbuf, total_size);
         	if (read_bytes == 0) {
-                	printf ("\nRead failed for Fifo_ingress. Trying to re-open.\n");
+                	syslog (LOG_INFO,"\nRead failed for Fifo_ingress. Trying to re-open.\n");
 			goto fifo;
         	}
         	val = atol(pbuf);
@@ -325,7 +325,7 @@ int send_to_fd(int fd, char *buf, int len)
 				return -1;
 		} else if (sent == 0)
 		{
-			printf("\nsend() returned 0 bytes. It seems that peer can't accept data right now. Try again later.\n");
+			syslog(LOG_INFO,"\nsend() returned 0 bytes. It seems that peer can't accept data right now. Try again later.\n");
 			return -1;
 		}
 		total_sent += sent;
@@ -345,24 +345,24 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
         if(read_bytes!= total_size)
         {
         	if (read_bytes == 0) {
-                	printf("\nPIPE broken, attempting to create/join again.\n");
+                	syslog(LOG_INFO,"\nPIPE broken, attempting to create/join again.\n");
 			return NULL;
                 } else if (read_bytes < 0) {
                         if(errno == EWOULDBLOCK || errno == EAGAIN|| errno == EINTR) {
                         	goto again;
                         }
                 } else {
-                        printf("\nReceived bytes:%d, total bytes:%d\n", read_bytes, total_size);
+                        syslog(LOG_INFO,"\nReceived bytes:%d, total bytes:%d\n", read_bytes, total_size);
                         total_read+=read_bytes;
                         total_size-=read_bytes;
-                        printf("\nReceived bytes:%d, left bytes:%d\n", total_read, total_size);
+                        syslog(LOG_INFO,"\nReceived bytes:%d, left bytes:%d\n", total_read, total_size);
                         if(errno == EWOULDBLOCK || errno == EAGAIN||errno == EINTR)
                                  goto again;
                 }
          }
          total_read+=read_bytes;
          received = atoi(lenbuf);
-         printf("\nReceived string: \"%s\" and length is %d\n", lenbuf, received);
+         syslog(LOG_INFO,"\nReceived string: \"%s\" and length is %d\n", lenbuf, received);
          read_bytes = 0;
          read_buf = (char*)calloc(total_read+1, sizeof(char));
          while(read_bytes < received)
@@ -379,18 +379,18 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
                         	continue;
                 }
         }
-        printf ("\nReceived msg: %s\n", read_buf);
+        syslog (LOG_INFO,"\nReceived msg: %s\n", read_buf);
 	return read_buf;
 }
 
 void *qmanager_thread(void * arg)
 {
 
-	printf ("\n Inside qmanager thread\n");
+	syslog (LOG_INFO,"\n Inside qmanager thread\n");
 
 	while(1)
 	{
-		printf ("\nTimer checking expired TSIDs.\n");
+		syslog (LOG_INFO,"\nTimer checking expired TSIDs.\n");
 		pthread_mutex_lock( &qtex );
 		rem_expired_idq(&gtsidq);
 		pthread_mutex_unlock( &qtex );
@@ -400,7 +400,7 @@ void *qmanager_thread(void * arg)
 }
 
 void sighandler(int signal) {
-	fprintf(stdout, "Received signal %d: %s.  Shutting down.\n", signal, strsignal(signal));
+	syslog(LOG_INFO, "Received signal %d: %s.  Shutting down.\n", signal, strsignal(signal));
 	exit (1);
 }
 
