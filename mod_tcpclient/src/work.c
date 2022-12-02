@@ -20,7 +20,7 @@ void sighandler(int signal);
 
 
 void *monitor_thread(void *arg) {
-        puts("\nInside monitor thread\n");
+        syslog(LOG_INFO,"\nInside monitor thread\n");
         while(1)
         {
 		syslog (LOG_INFO,"\nmonitoring TCP connections.\n");
@@ -45,7 +45,7 @@ void *recv_worker_thread(void *arg) {
 	tv.tv_sec=READ_SEC_TO;
 	tv.tv_usec=READ_USEC_TO;
 
-        puts("\nInside worker thread\n");
+        syslog(LOG_INFO,"\nInside worker thread\n");
         while(1)
         {
 		if (c->state != 1)
@@ -156,7 +156,7 @@ void *send_worker_thread(void *arg)
         con_t *c = (con_t*)arg;
 	msgque_t *node;
 
-        puts("\nInside send_worker_thread\n");
+        syslog(LOG_INFO,"\nInside send_worker_thread\n");
         while(1)
        {
 		if (c->state != 1)
@@ -254,7 +254,7 @@ void *rcv_pipe_thread(void *arg)
 	char pbuf[9];
 	char  *tid, *sid;
 	request_t *req;
-	puts("\nInside pipe_threads\n");
+	syslog(LOG_INFO,"\nInside pipe_threads\n");
 fifo:	
 	pip = open(SL_RCVFIFO, O_RDONLY);
 	while(1)

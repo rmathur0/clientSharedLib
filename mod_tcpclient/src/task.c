@@ -25,6 +25,7 @@ con_t *create_peers(configurator *cfg)
 	int keepalive = 1, keepcnt = 5, keepidle = 30, keepintvl = 120;
 	struct sockaddr_in server_addr;
 
+	syslog(LOG_INFO, "Creating peer connections");
 	gconn_list = (con_t*)calloc(cfg->num_peers, sizeof(con_t));
 
         /* Create TCP connections and store them */
