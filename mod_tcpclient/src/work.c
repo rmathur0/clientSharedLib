@@ -253,6 +253,7 @@ void *send_worker_thread(void *arg)
 			sleep(1);
                         continue;
 		}
+		send_to_fd(c->fd,(char*)&node->len, sizeof(node->len));
                 send_to_fd(c->fd, node->data->req_buf, node->len);
 		free(node->data->req_buf);
 		free(node->data);
