@@ -11,7 +11,6 @@ typedef struct _res_xml_interface {
 
 typedef struct _req_xml_interface {
 	TransactionCallback_Req_f *reg_req_cb;
-	void *callback_param;
 } req_xml_cb;
 
 /* Monitoring thread to check the health of all sockets */
@@ -45,5 +44,5 @@ void *generic_receive_from_fd(int fd, int *ret);
 int build_fd_sets(int fd, fd_set *read_fds, fd_set *write_fds, fd_set *except_fds);
 
 int register_callback_responses(TransactionCallback_Res_f *callback_f,void *callback_param);
-int register_callback_requests(TransactionCallback_Req_f *callback_f,void *callback_param);
+int ready_to_send(request_t *req, TransactionCallback_Res_f *callback_f, void *callback_param);
 #endif

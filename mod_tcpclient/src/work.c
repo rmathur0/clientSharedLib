@@ -40,6 +40,7 @@ void *recv_worker_thread(void *arg) {
 	long elapsed_msecs;
 	request_t *req;
 	response_t *res;
+	tsidque_t n;
 
 	tv.tv_sec=READ_SEC_TO;
 	tv.tv_usec=READ_USEC_TO;
@@ -91,7 +92,7 @@ void *recv_worker_thread(void *arg) {
 					    tid = (char*)calloc(out_len+1, sizeof(char));
                                             memcpy(sid, out, out_len);
 					    pthread_mutex_lock( &qtex );
-					    lookup = lookup_ID_idq(&gtsidq, tid, sid, &elapsed_msecs);
+					    lookup = lookup_ID_idq(&gtsidq, tid, sid, &elapsed_msecs, &n);
 					    pthread_mutex_unlock( &qtex );
 					    if (lookup == 1)
 					    {
@@ -99,8 +100,8 @@ void *recv_worker_thread(void *arg) {
 						strcpy(res->id, tid);
 						strcat(res->id, sid);
 						res->retcode = retcode;
-						res->query_res = message; 
-						res_cb.reg_res_cb(0, res_cb.callback_param, res, elapsed_msecs);
+						res->query_res = message;
+						n.callback_f(0, n.callback_param, res, elapsed_msecs); 
 					    }else{
 						/* When timeout, don't call any cb fn */
 						free(message); message = NULL;
@@ -116,7 +117,7 @@ void *recv_worker_thread(void *arg) {
 						resp = (char*)calloc(out_len+1, sizeof(char));
                                                 memcpy(resp, out, out_len);
 						pthread_mutex_lock( &qtex );
-						lookup = lookup_ID_idq(&gtsidq, resp, NULL, &elapsed_msecs);
+						lookup = lookup_ID_idq(&gtsidq, resp, NULL, &elapsed_msecs, &n);
 						pthread_mutex_unlock( &qtex );
 						if (lookup == 1)
 						{
@@ -125,7 +126,7 @@ void *recv_worker_thread(void *arg) {
 						    req->msg_len = rc;
 						    req->no_transaction = 0;
 						    req->picked_up = 1;
-						    req_cb.reg_req_cb(0, req_cb.callback_param, req, elapsed_msecs);
+						    req_cb.reg_req_cb(0, req, elapsed_msecs);
 						}
 						else {
 						    /* When timeout, don't call any cb fn */
@@ -157,7 +158,7 @@ void *send_worker_thread(void *arg)
 
         puts("\nInside send_worker_thread\n");
         while(1)
-        {
+       {
 		if (c->state != 1)
                         sleep(MONITORING_PERIOD);
 
@@ -165,8 +166,10 @@ void *send_worker_thread(void *arg)
 		pthread_mutex_lock( &qtex );
                 node = pop_from_msgq(&gmsgq, c->peer_id);
 		pthread_mutex_unlock( &qtex );
-                if (node == NULL)
+                if (node == NULL) {
+			sleep(1);
                         continue;
+		}
                 send_to_fd(c->fd, node->data->req_buf, node->len);
 		free(node->data->req_buf);
 		free(node->data);
@@ -227,7 +230,7 @@ int manage(configurator *cfg)
         }
         pthread_detach(monit_t);
 	sleep(1);
-	/* Thread for PIPE communication */
+	/* Thread for PIPE communication *
 	syslog (LOG_INFO,"\nCreating pipe thread\n");
         rc = pthread_create(&pipe_t, NULL, rcv_pipe_thread, NULL);
         if (rc != 0)
@@ -237,6 +240,7 @@ int manage(configurator *cfg)
         }
         pthread_detach(pipe_t);
 	sleep(1);	
+	*/
 	syslog(LOG_INFO,"\nAll threads are created to function separately\n");
 	return 0;
 }
@@ -267,13 +271,19 @@ fifo:
  		 * ToDo: tid and sid needs to be set inside xml structure
  		 * */
 		pthread_mutex_lock( &qtex );
-		push_to_msgq(&gmsgq, &gtsidq, req->id, NULL, req->msg_len, req);
+		push_to_msgq(&gmsgq, &gtsidq, req->id, NULL, req->msg_len, req, NULL, NULL);
 		pthread_mutex_unlock( &qtex );
 	}
 	pthread_exit(NULL);
 }
 
-
+int ready_to_send(request_t *req, TransactionCallback_Res_f *callback_f, void *callback_param)
+{
+	pthread_mutex_lock( &qtex );
+	push_to_msgq(&gmsgq, &gtsidq, req->id, NULL, req->msg_len, req, callback_f, callback_param);
+	pthread_mutex_unlock( &qtex );
+	return 1;
+}
 
 int build_fd_sets(int fd, fd_set *read_fds, fd_set *write_fds, fd_set *except_fds)
 {
@@ -411,9 +421,8 @@ int register_callback_responses(TransactionCallback_Res_f *callback_f,void *call
 	return 1;
 }
 
-int register_callback_requests(TransactionCallback_Req_f *callback_f,void *callback_param)
+int register_callback_requests(TransactionCallback_Req_f *callback_f)
 {
 	req_cb.reg_req_cb = callback_f;
-	req_cb.callback_param = callback_param;
 	return 1;
 }

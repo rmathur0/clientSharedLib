@@ -29,6 +29,8 @@ typedef struct idque {
 	struct timeval ETime;
 	struct idque *prev;
 	struct idque *next;
+	TransactionCallback_Res_f *callback_f;
+	void *callback_param;
 } tsidque_t;
 
 /* DS to hold received unit on PIPE/Socket */
@@ -56,19 +58,19 @@ void monitor_sock_conn(configurator *cfg);
 
 /* Check if provided ID is present in the connection Q */
 int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn);
-int lookup_ID_idq(tsidque_t **head, char *tid, char *sid, long *elapsed_msecs);
+int lookup_ID_idq(tsidque_t **head, char *tid, char *sid, long *elapsed_msecs, tsidque_t *node);
 
 /* Add new element in this Q */
-int add_entry_idq(tsidque_t **head, char *tid, char *sid);
+int add_entry_idq(tsidque_t **head, char *tid, char *sid, TransactionCallback_Res_f *callback_f, void *callback_param);
 
 /* Update the existing element in Q */
-int update_entry_idq(tsidque_t **head, char *id);
+int update_entry_idq(tsidque_t **head, char *id, TransactionCallback_Res_f *callback_f, void *callback_param);
 
 /* Del expired element in this Q */
 void rem_expired_idq(tsidque_t **head);
 
 /* Add element in msgque_t */
-void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, int len, request_t *data);
+void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, int len, request_t *data, TransactionCallback_Res_f *callback_f, void *callback_param);
 
 /* Pop element from msgque_t for a connection*/
 msgque_t *pop_from_msgq(msgque_t **head, int con); 

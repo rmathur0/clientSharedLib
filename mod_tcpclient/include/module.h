@@ -51,17 +51,18 @@ int get_peers();
  * time difference in milliseconds
  */
 typedef void (TransactionCallback_Res_f)(int is_timeout, void *param, response_t *res, long elapsed_msecs);
-typedef void (TransactionCallback_Req_f)(int is_timeout, void *param, request_t *req, long elapsed_msecs);
+typedef void (TransactionCallback_Req_f)(int is_timeout, request_t *req, long elapsed_msecs);
 
-/* Function to be called by the IML by passing the following arguments:
+/* Function to be called by the IML per transaction to send msg & callback to receive response by passing the following arguments:
+ * pointer to request_t containing data
  * Function pointer to TransactionCallback_Res_f
  * void pointer to callback param blob
  */
-int register_resp_cb(TransactionCallback_Res_f *callback_f,void *callback_param);
+int sl_send_buf(request_t *req, TransactionCallback_Res_f *callback_f, void *callback_param);
 
-/* Function to be called by the IML for receiving the requests from Peers/Kamailio(s) by passing the following arguments:
+/* Function to be called by the IML once to register callback for receiving the requests from Peers/Kamailio(s) by passing the following arguments:
  * Function pointer to TransactionCallback_Req_f
- * void pointer to callback param blob
  */
-int register_req_cb(TransactionCallback_Req_f *callback_f,void *callback_param);
+int register_req_cb(TransactionCallback_Req_f *callback_f);
+
 #endif

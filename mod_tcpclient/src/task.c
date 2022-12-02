@@ -125,7 +125,7 @@ int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn)
 	return 0;
 }
 
-int lookup_ID_idq(tsidque_t **head, char *tid, char *sid, long *elapsed_msecs)
+int lookup_ID_idq(tsidque_t **head, char *tid, char *sid, long *elapsed_msecs, tsidque_t *node)
 {
         tsidque_t *temp = *head;
         char *temp_id;
@@ -155,6 +155,8 @@ int lookup_ID_idq(tsidque_t **head, char *tid, char *sid, long *elapsed_msecs)
                         gettimeofday(&curr, NULL);
 			time_elapsed = (curr.tv_sec - temp->ATime.tv_sec)*1000 + (curr.tv_usec - temp->ATime.tv_usec)/1000;
 			*elapsed_msecs = time_elapsed;
+			node->callback_f = temp->callback_f;
+			node->callback_param = temp->callback_param;
                         free(temp_id);
                         return 1;
                 }
@@ -165,7 +167,7 @@ int lookup_ID_idq(tsidque_t **head, char *tid, char *sid, long *elapsed_msecs)
 }
 
 
-int update_entry_idq(tsidque_t **head, char *id)
+int update_entry_idq(tsidque_t **head, char *id, TransactionCallback_Res_f *callback_f, void *callback_param)
 {
 	tsidque_t *temp = *head;
 
@@ -176,13 +178,15 @@ int update_entry_idq(tsidque_t **head, char *id)
 			gettimeofday(&temp->ATime, NULL);
 			temp->ETime = temp->ATime;
 			temp->ETime.tv_sec+= EXPIRY;
+			temp->callback_f = callback_f;
+			temp->callback_param = callback_param;
 			return temp->conn;
 		}
 	}
 	return -1;
 }
 
-int add_entry_idq(tsidque_t **head, char *tid, char *sid)
+int add_entry_idq(tsidque_t **head, char *tid, char *sid, TransactionCallback_Res_f *callback_f, void *callback_param)
 {
 	tsidque_t *temp = (tsidque_t*)calloc(1, sizeof(tsidque_t));
 	char *temp_id;
@@ -206,17 +210,9 @@ int add_entry_idq(tsidque_t **head, char *tid, char *sid)
 	temp->ETime = temp->ATime;
 	temp->ETime.tv_sec+= EXPIRY;
 	temp->next = NULL;
-	
+	temp->callback_f = callback_f;
+        temp->callback_param = callback_param;	
 	num_peers = get_peers();
-	rc = is_ID_present_idq(head, tid, sid, &con);
-	if (rc == 1)
-	{
-		ret = update_entry_idq(head, temp_id);
-		if (ret == -1)
-			goto assign_conn;
-		temp->conn = con;
-	}
-	else {
 assign_conn:	num_peers = get_peers();
 reassign_conn:	con = glast_con_rr % num_peers;
 		if (gconn_list[con].state == 1)
@@ -230,7 +226,6 @@ reassign_conn:	con = glast_con_rr % num_peers;
 		glast_con_rr++;
 		if (glast_con_rr == num_peers)
 			glast_con_rr = 0;
-	}
 	if (trav == NULL)
 	{
 		*head = temp;
@@ -283,7 +278,7 @@ void rem_expired_idq(tsidque_t **head)
 
 
 /* Add element in msgque_t */
-void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, int len, request_t *data)
+void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, int len, request_t *data, TransactionCallback_Res_f *callback_f, void *callback_param)
 {
 	msgque_t *trav = *msghead;
 	msgque_t *temp = (msgque_t*)calloc(1, sizeof(msgque_t));
@@ -309,12 +304,12 @@ void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, 
 	rc = is_ID_present_idq(idhead, tid, sid, &temp->conn);
 	if (rc == 1)
 	{
-		ret = update_entry_idq(idhead, temp_id);
+		ret = update_entry_idq(idhead, temp_id, callback_f, callback_param);
 		if (ret == -1)
 			goto add;
 	}
 	else
-add:		temp->conn = add_entry_idq(idhead, tid, sid);
+add:		temp->conn = add_entry_idq(idhead, tid, sid, callback_f, callback_param);
 	
 	if (trav == NULL)
         {
@@ -359,7 +354,7 @@ msgque_t *pop_from_msgq(msgque_t **head, int con)
 
 int parse_xml_attribute(char *in,int in_len, char *startKey, char *endKey, char *out, int *out_len)
 {
-	int i=0, j;
+	int i=0, j=0;
 	for(i=0;i<in_len; ++i)
 	{
 		if(strncmp(&in[i], startKey, strlen(startKey)) == 0)
