@@ -50,7 +50,7 @@ connect_now:            if ((conn = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
                         	goto connect_now;
 			}
                 }
-                setnonblock(conn);
+                //setnonblock(conn);
                 setsockopt(conn, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
                 setsockopt(conn, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(int));
                 setsockopt(conn, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(int));
@@ -81,7 +81,7 @@ void monitor_sock_conn(configurator *cfg)
         		inet_pton(AF_INET, cfg->peers[i].ip, &(server_addr.sin_addr));
         		server_addr.sin_port = htons(cfg->peers[i].port);
         		connect(gconn_list[i].fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-        		setnonblock(gconn_list[i].fd);
+        		//setnonblock(gconn_list[i].fd);
         		setsockopt(gconn_list[i].fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
         		setsockopt(gconn_list[i].fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(int));
         		setsockopt(gconn_list[i].fd, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(int));

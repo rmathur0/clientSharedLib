@@ -33,7 +33,7 @@ void *monitor_thread(void *arg) {
 
 void *recv_worker_thread(void *arg) {
 	con_t *c = (con_t*)arg;
-	char* message = NULL, *out = NULL, *resp = NULL, *tid = NULL, *sid = NULL;
+	char* message = NULL, *out = NULL, *resp = NULL, *tid = NULL, *sid = NULL, *msg_typ = NULL, *typ = NULL;
 	int rc = 0, activity = -1, max_fd = 0, out_len = 0, retcode = 0, lookup = 0;
         fd_set read_fds, write_fds, except_fds;
 	struct timeval tv;
@@ -45,17 +45,19 @@ void *recv_worker_thread(void *arg) {
 	tv.tv_sec=READ_SEC_TO;
 	tv.tv_usec=READ_USEC_TO;
 
-        syslog(LOG_INFO,"\nInside worker thread\n");
+        syslog(LOG_INFO,"Inside worker thread [%d]", c->peer_id);
         while(1)
         {
+		tid = NULL; sid = NULL; out = NULL; out_len = 0;
+
 		if (c->state != 1)
 			sleep(MONITORING_PERIOD);
 		elapsed_msecs = 0;
 		build_fd_sets(c->fd, &read_fds, &write_fds, &except_fds);
 		if (max_fd < c->fd)
 			max_fd = c->fd;
-                activity = select(max_fd + 1, &read_fds, NULL, &except_fds, NULL);
-		syslog(LOG_INFO,"\nCame out of select systemcall for peer [%d] & connection [%d].\n",c->peer_id, c->fd);
+                activity = select(max_fd + 1, &read_fds, NULL, &except_fds, &tv);
+		syslog(LOG_INFO,"\nCame out of select systemcall for peer [%d] with state [%d] & connection [%d].\n",c->peer_id, c->state, c->fd);
                 switch (activity)
                 {
                 case -1:
@@ -73,68 +75,149 @@ void *recv_worker_thread(void *arg) {
 						free(message);
 						message = NULL;
 					/* It appears connection is lost, sleep for 10 sec and let monitor thread recreate the conection */
-                                        sleep(MONITORING_PERIOD);
+                                        /* sleep(MONITORING_PERIOD); */
 					break;
                                 default:
-					parse_xml_attribute(message, rc, "<RESP_CODE>", "</RESP_CODE>", out, &out_len);
+					parse_xml_attribute(message, rc, "<EVENT>", "</EVENT>", msg_typ, &out_len);
 					if (out_len > 0)
 					{
-					    resp = (char*)calloc(out_len+1, sizeof(char));
-					    memcpy(resp, out, out_len);
-					    retcode = atoi(resp);
-					    free(resp); resp = NULL;
-					    out = NULL; out_len = 0;
-					    parse_xml_attribute(message, rc, "<SID>", "</SID>", out, &out_len);
-					    sid = (char*)calloc(out_len+1, sizeof(char));
-					    memcpy(sid, out, out_len);
-					    out = NULL; out_len = 0;
-					    parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
-					    tid = (char*)calloc(out_len+1, sizeof(char));
-                                            memcpy(sid, out, out_len);
-					    pthread_mutex_lock( &qtex );
-					    lookup = lookup_ID_idq(&gtsidq, tid, sid, &elapsed_msecs, &n);
-					    pthread_mutex_unlock( &qtex );
-					    if (lookup == 1)
-					    {
-						res = (response_t*)calloc(1, sizeof(response_t));
-						strcpy(res->id, tid);
-						strcat(res->id, sid);
-						res->retcode = retcode;
-						res->query_res = message;
-						n.callback_f(0, n.callback_param, res, elapsed_msecs); 
-					    }else{
-						/* When timeout, don't call any cb fn */
-						free(message); message = NULL;
+						parse_xml_attribute(message, rc, "<TYPE>", "</TYPE>", out, &out_len);
+						if (out_len > 0)
+						{
+							typ = (char*)calloc(out_len+1, sizeof(char));
+							memcpy(typ, out, out_len);
+							retcode = atoi(typ);
+							/* TYPE = 1; EVENT_REQUEST */
+							if (retcode == 1)
+							{
+								out = NULL; out_len = 0;
+								parse_xml_attribute(message, rc, "<SID>", "</SID>", out, &out_len);
+								sid = (char*)calloc(out_len+1, sizeof(char));
+                                                        	memcpy(sid, out, out_len);
+                                                        	out = NULL; out_len = 0;
+                                                        	parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
+                                                        	tid = (char*)calloc(out_len+1, sizeof(char));
+                                                        	memcpy(sid, out, out_len);
+                                                        	pthread_mutex_lock( &qtex );
+                                                        	lookup = lookup_ID_idq(&gtsidq, tid, sid, &elapsed_msecs, &n);
+                                                        	pthread_mutex_unlock( &qtex );
+								if (lookup == 1)
+                                                                {
+                                                                        req = (request_t*)calloc(1, sizeof(request_t));
+                                                                        req->req_buf = message;
+                                                                        req->msg_len = rc;
+                                                                        req->no_transaction = 0;
+                                                                        req->picked_up = 1;
+                                                                        req_cb.reg_req_cb(0, req, elapsed_msecs);
+                                                                }
+                                                                else {
+                                                                        /* When timeout, don't call any cb fn */
+                                                                        free(message); message = NULL;
+                                                                }
+								free(typ); free(sid); free(tid);
+								typ = NULL; sid = NULL; tid = NULL; out = NULL; out_len = 0;
+								continue;
+							}
+							parse_xml_attribute(message, rc, "<REPLY_CODE>", "</REPLY_CODE>", out, &out_len);
+							if (out_len > 0)
+							{
+					    			resp = (char*)calloc(out_len+1, sizeof(char));
+					    			memcpy(resp, out, out_len);
+					    			retcode = atoi(resp);
+					    			free(resp); resp = NULL;
+					    			out = NULL; out_len = 0;
+					    			parse_xml_attribute(message, rc, "<SID>", "</SID>", out, &out_len);
+					    			sid = (char*)calloc(out_len+1, sizeof(char));
+					    			memcpy(sid, out, out_len);
+					    			out = NULL; out_len = 0;
+					    			parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
+					    			tid = (char*)calloc(out_len+1, sizeof(char));
+                                            			memcpy(sid, out, out_len);
+					    			pthread_mutex_lock( &qtex );
+					   	 		lookup = lookup_ID_idq(&gtsidq, tid, sid, &elapsed_msecs, &n);
+					    			pthread_mutex_unlock( &qtex );
+					    			if (lookup == 1)
+					    			{
+									res = (response_t*)calloc(1, sizeof(response_t));
+									strcpy(res->id, tid);
+									strcat(res->id, sid);
+									res->retcode = retcode;
+									res->query_res = message;
+									n.callback_f(0, n.callback_param, res, elapsed_msecs); 
+					    			}else{
+									/* When timeout, don't call any cb fn */
+									free(message); message = NULL;
+								}
+					    			free(tid); free(sid);
+					    			tid = NULL; sid = NULL;
+					    			out = NULL; out_len = 0;
+							}
 						}
-					    free(tid); free(sid);
-					    tid = NULL; sid = NULL;
-					    out = NULL; out_len = 0;
 					}
 					else {
-					    parse_xml_attribute(message, rc, "<SIP_CALLID>", "</SIP_CALLID>", out, &out_len);
-					    if (out_len > 0)
-					    {
-						resp = (char*)calloc(out_len+1, sizeof(char));
-                                                memcpy(resp, out, out_len);
-						pthread_mutex_lock( &qtex );
-						lookup = lookup_ID_idq(&gtsidq, resp, NULL, &elapsed_msecs, &n);
-						pthread_mutex_unlock( &qtex );
-						if (lookup == 1)
-						{
-						    req = (request_t*)calloc(1, sizeof(request_t));
-						    req->req_buf = message;
-						    req->msg_len = rc;
-						    req->no_transaction = 0;
-						    req->picked_up = 1;
-						    req_cb.reg_req_cb(0, req, elapsed_msecs);
+						parse_xml_attribute(message, rc, "<TYPE>", "</TYPE>", out, &out_len);
+                                                if (out_len > 0)
+                                                {
+                                                        typ = (char*)calloc(out_len+1, sizeof(char));
+                                                        memcpy(typ, out, out_len);
+                                                        retcode = atoi(typ);
+                                                        /* TYPE = 1; EVENT_REQUEST */
+                                                        if (retcode == 1)
+                                                        {
+								parse_xml_attribute(message, rc, "<SIP_CALLID>", "</SIP_CALLID>", out, &out_len);
+								if (out_len > 0)
+								{
+									resp = (char*)calloc(out_len+1, sizeof(char));
+                                                                	memcpy(resp, out, out_len);
+                                                                	pthread_mutex_lock( &qtex );
+                                                                	lookup = lookup_ID_idq(&gtsidq, resp, NULL, &elapsed_msecs, &n);
+                                                               		pthread_mutex_unlock( &qtex );
+                                                                	if (lookup == 1)
+                                                                	{
+                                                                        	req = (request_t*)calloc(1, sizeof(request_t));
+                                                                        	req->req_buf = message;
+                                                                       		req->msg_len = rc;
+                                                                        	req->no_transaction = 0;
+                                                                        	req->picked_up = 1;
+                                                                        	req_cb.reg_req_cb(0, req, elapsed_msecs);
+                                                                	}
+									else {
+										/* When timeout, don't call any cb fn */
+										free(message); message = NULL;
+									}
+								}
+							}
+							else
+							{
+								parse_xml_attribute(message, rc, "<REPLY_CODE>", "</REPLY_CODE>", out, &out_len);
+								resp = (char*)calloc(out_len+1, sizeof(char));
+                                                                memcpy(resp, out, out_len);
+                                                                retcode = atoi(resp);
+                                                                free(resp); resp = NULL;
+                                                                out = NULL; out_len = 0;
+								parse_xml_attribute(message, rc, "<SIP_CALLID>", "</SIP_CALLID>", out, &out_len);
+								tid = (char*)calloc(out_len+1, sizeof(char));
+								memcpy(tid, out, out_len);
+								pthread_mutex_lock( &qtex );
+                                                                lookup = lookup_ID_idq(&gtsidq, tid, sid, &elapsed_msecs, &n);
+                                                                pthread_mutex_unlock( &qtex );
+                                                                if (lookup == 1)
+                                                                {
+                                                                        res = (response_t*)calloc(1, sizeof(response_t));
+                                                                        strcpy(res->id, tid);
+                                                                        strcat(res->id, sid);
+                                                                        res->retcode = retcode;
+                                                                        res->query_res = message;
+                                                                        n.callback_f(0, n.callback_param, res, elapsed_msecs);
+                                                                }else{
+                                                                        /* When timeout, don't call any cb fn */
+                                                                        free(message); message = NULL;
+                                                                }
+                                                                free(tid); free(sid);
+                                                                tid = NULL; sid = NULL;
+                                                                out = NULL; out_len = 0;
+							}
 						}
-						else {
-						    /* When timeout, don't call any cb fn */
-						    free(message); message = NULL;
-						}
-						free(resp); resp = NULL;
-					    }
-						out = NULL; out_len = 0;
 					}
                                 }
                         }
