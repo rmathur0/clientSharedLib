@@ -54,7 +54,7 @@ void *recv_worker_thread(void *arg) {
 		build_fd_sets(c->fd, &read_fds, &write_fds, &except_fds);
 		if (max_fd < c->fd)
 			max_fd = c->fd;
-                activity = select(max_fd + 1, &read_fds, NULL, &except_fds, &tv);
+                activity = select(max_fd + 1, &read_fds, NULL, &except_fds, NULL);
 		syslog(LOG_INFO,"\nCame out of select systemcall for peer [%d] & connection [%d].\n",c->peer_id, c->fd);
                 switch (activity)
                 {
