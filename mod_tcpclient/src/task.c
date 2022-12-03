@@ -23,23 +23,29 @@ con_t *create_peers(configurator *cfg)
 {
 	int i = 0, rc = -1, retry = 0, conn;
 	int keepalive = 1, keepcnt = 5, keepidle = 30, keepintvl = 120;
-	struct sockaddr_in server_addr;
+	struct addrinfo hints, *res;
+	char sndbuf[5];
 
 	syslog(LOG_INFO, "Creating peer connections");
 	gconn_list = (con_t*)calloc(cfg->num_peers, sizeof(con_t));
-
+	memset(sndbuf, 0, 5);
+        memset(&hints, 0, sizeof hints);
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
         /* Create TCP connections and store them */
         for (i = 0; i < cfg->num_peers; i++)
         {
 		retry = 1;
-connect_now:            if ((conn = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+		sprintf(sndbuf, "%d", cfg->peers[i].port);
+		syslog(LOG_INFO,"Creating socket connection to %s:%s",cfg->peers[i].ip, sndbuf);
+		getaddrinfo(cfg->peers[i].ip, sndbuf, &hints, &res);
+		conn = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+connect_now:            if (conn < 0) {
                         perror("\nSocket creation failed. Exiting.\n");
                         exit(1);
                 }
-                bzero((char *) &server_addr, sizeof (server_addr));
-                inet_pton(AF_INET, cfg->peers[i].ip, &(server_addr.sin_addr));
-                server_addr.sin_port = htons(cfg->peers[i].port);
-                rc = connect(conn, (struct sockaddr *)&server_addr, sizeof(server_addr));
+                rc = connect(conn, res->ai_addr, res->ai_addrlen);
+		syslog(LOG_INFO,"connect returned [%d] \n",rc);
                 if (rc < 0) {
                         syslog (LOG_INFO,"\nConnect failed for [%s:%d] \n", cfg->peers[i].ip, cfg->peers[i].port);
                         if (retry == 1) {
@@ -59,6 +65,7 @@ connect_now:            if ((conn = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
                 gconn_list[i].state = 1;
                 gconn_list[i].peer_id = i;
         }
+	syslog(LOG_INFO,"Leaving create_peers");
 	return gconn_list;
 }
 
