@@ -73,21 +73,25 @@ void monitor_sock_conn(configurator *cfg)
 {
 	int i = 0, rc = -1, err = 0;
         int keepalive = 1, keepcnt = 5, keepidle = 30, keepintvl = 120;
-        struct sockaddr_in server_addr;
+        struct addrinfo hints, *res;
+        char sndbuf[5];
 	socklen_t len = sizeof (err);
 
 	syslog (LOG_INFO,"\nmonitoring TCP connections.\n");
+	memset(sndbuf, 0, 5);
+        memset(&hints, 0, sizeof hints);
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
         for (i = 0; i < cfg->num_peers; i++) {
-        	rc = getsockopt (gconn_list[i].fd, SOL_SOCKET, SO_ERROR, &err, &len);
+	       	rc = getsockopt (gconn_list[i].fd, SOL_SOCKET, SO_ERROR, &err, &len);
         	if ((rc != 0)||(err != 0)) {
         		syslog (LOG_INFO,"\nerror getting getsockopt return code: %s and socket error: %s\n", strerror(rc), strerror(err));
         		close(gconn_list[i].fd);
         		gconn_list[i].state=0;
-        		gconn_list[i].fd = socket(AF_INET, SOCK_STREAM, 0);
-        		bzero((char *) &server_addr, sizeof (server_addr));
-        		inet_pton(AF_INET, cfg->peers[i].ip, &(server_addr.sin_addr));
-        		server_addr.sin_port = htons(cfg->peers[i].port);
-        		connect(gconn_list[i].fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+			sprintf(sndbuf, "%d", cfg->peers[i].port);
+			getaddrinfo(cfg->peers[i].ip, sndbuf, &hints, &res);
+ 			gconn_list[i].fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+			rc = connect(conn, res->ai_addr, res->ai_addrlen);
         		//setnonblock(gconn_list[i].fd);
         		setsockopt(gconn_list[i].fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
         		setsockopt(gconn_list[i].fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(int));
