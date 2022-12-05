@@ -14,6 +14,8 @@ res_xml_cb res_cb;
 req_xml_cb req_cb;
 
 pthread_mutex_t qtex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t condition_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t  condition_cond  = PTHREAD_COND_INITIALIZER;
 
 /* Signal handler function (defined below). */
 void sighandler(int signal);
@@ -45,7 +47,7 @@ void *recv_worker_thread(void *arg) {
 	tv.tv_sec=READ_SEC_TO;
 	tv.tv_usec=READ_USEC_TO;
 
-        syslog(LOG_INFO,"Inside worker thread [%d]", c->peer_id);
+        syslog(LOG_INFO,"RM: Inside worker thread [%d]", c->peer_id);
         while(1)
         {
 		tid = NULL; sid = NULL; out = NULL; out_len = 0;
@@ -78,8 +80,10 @@ void *recv_worker_thread(void *arg) {
 						{
 							out = NULL; out_len = 0;
 							parse_xml_attribute(message, rc, "<SID>", "</SID>", out, &out_len);
-							sid = (char*)calloc(out_len+1, sizeof(char));
-                                                       	memcpy(sid, out, out_len);
+							if (out_len > 0) {
+								sid = (char*)calloc(out_len+1, sizeof(char));
+                                                       		memcpy(sid, out, out_len);
+							}
                                                        	out = NULL; out_len = 0;
                                                        	parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
                                                        	tid = (char*)calloc(out_len+1, sizeof(char));
@@ -113,8 +117,10 @@ void *recv_worker_thread(void *arg) {
 				    			free(resp); resp = NULL;
 				    			out = NULL; out_len = 0;
 				    			parse_xml_attribute(message, rc, "<SID>", "</SID>", out, &out_len);
-				    			sid = (char*)calloc(out_len+1, sizeof(char));
-				    			memcpy(sid, out, out_len);
+				    			if (out_len > 0) {
+								sid = (char*)calloc(out_len+1, sizeof(char));
+				    				memcpy(sid, out, out_len);
+							}
 				    			out = NULL; out_len = 0;
 				    			parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
 				    			tid = (char*)calloc(out_len+1, sizeof(char));
@@ -220,6 +226,12 @@ void *send_worker_thread(void *arg)
         syslog(LOG_INFO,"\nInside send_worker_thread\n");
         while(1)
        {
+		pthread_mutex_lock( &condition_mutex );
+		while(gmsgq == NULL)
+		{
+			pthread_cond_wait( &condition_cond, &condition_mutex );
+		}
+		pthread_mutex_unlock( &condition_mutex );
 		if (c->state != 1)
                         sleep(MONITORING_PERIOD);
 
@@ -232,6 +244,7 @@ void *send_worker_thread(void *arg)
                         continue;
 		}
 		send_to_fd(c->fd,(char*)&node->len, sizeof(node->len));
+		syslog(LOG_INFO,"RM: Sending [%s] to kamailio",node->data->req_buf);
                 send_to_fd(c->fd, node->data->req_buf, node->len);
 		free(node->data->req_buf);
 		free(node->data);
@@ -248,10 +261,10 @@ int manage(configurator *cfg)
 	ref_gcfg = cfg;
 	gcl = create_peers(ref_gcfg);
 	sleep(1);
-	syslog(LOG_INFO,"\nTCP connections up\n");
+	syslog(LOG_INFO,"\nRM: TCP connections up\n");
 	
 	/* Thread to manage queues */
-	syslog (LOG_INFO,"\nCreating qmanager thread\n");
+	syslog (LOG_INFO,"\nRM: Creating qmanager thread\n");
 	rc = pthread_create(&manager_t, NULL, qmanager_thread, NULL);
 	if (rc != 0)
 	{
@@ -261,7 +274,7 @@ int manage(configurator *cfg)
 	pthread_detach(manager_t);
 	sleep(1);
 	/* Thread for far right peers communication */
-	syslog(LOG_INFO,"\nCreating worker threads.\n");
+	syslog(LOG_INFO,"\nRM: Creating worker threads.\n");
 	worker_t = (pthread_t*)calloc(ref_gcfg->num_peers*2, sizeof(pthread_t));
 	for (i = 0, j = 0; i < ref_gcfg->num_peers; i++)
 	{
@@ -283,7 +296,7 @@ int manage(configurator *cfg)
 	}
 	sleep(1);
 	/* Thread for monitoring the connections to far right peers */
-	syslog (LOG_INFO,"\nCreating monitor thread\n");
+	syslog (LOG_INFO,"\nRM: Creating monitor thread\n");
         rc = pthread_create(&monit_t, NULL, monitor_thread, NULL);
         if (rc != 0)
         {
@@ -303,7 +316,7 @@ int manage(configurator *cfg)
         pthread_detach(pipe_t);
 	sleep(1);	
 	*/
-	syslog(LOG_INFO,"\nAll threads are created to function separately\n");
+	syslog(LOG_INFO,"\nRM: All threads are created to function separately\n");
 	return 0;
 }
 
@@ -341,9 +354,14 @@ fifo:
 
 int ready_to_send(request_t *req, TransactionCallback_Res_f *callback_f, void *callback_param)
 {
+	
 	pthread_mutex_lock( &qtex );
 	push_to_msgq(&gmsgq, &gtsidq, req->id, NULL, req->msg_len, req, callback_f, callback_param);
 	pthread_mutex_unlock( &qtex );
+	pthread_mutex_lock( &condition_mutex );
+	if (gmsgq->next == NULL)
+		pthread_cond_signal( &condition_cond );
+	pthread_mutex_unlock( &condition_mutex );
 	return 1;
 }
 
@@ -434,7 +452,7 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
          }
          total_read+=read_bytes;
          received = atoi(lenbuf);
-         syslog(LOG_INFO,"\nReceived string: \"%s\" and length is %d\n", lenbuf, received);
+         syslog(LOG_INFO,"\nRM: Received string: \"%s\" and length is %d\n", lenbuf, received);
          read_bytes = 0;
          read_buf = (char*)calloc(total_read+1, sizeof(char));
          while(read_bytes < received)
@@ -451,18 +469,18 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
                         	continue;
                 }
         }
-        syslog (LOG_INFO,"\nReceived msg: %s\n", read_buf);
+        syslog (LOG_INFO,"\nRM: Received msg: %s\n", read_buf);
 	return read_buf;
 }
 
 void *qmanager_thread(void * arg)
 {
 
-	syslog (LOG_INFO,"\n Inside qmanager thread\n");
+	syslog (LOG_INFO,"\nRM:  Inside qmanager thread\n");
 
 	while(1)
 	{
-		syslog (LOG_INFO,"\nTimer checking expired TSIDs.\n");
+		syslog (LOG_INFO,"\nRM: Timer checking expired TSIDs.\n");
 		pthread_mutex_lock( &qtex );
 		rem_expired_idq(&gtsidq);
 		pthread_mutex_unlock( &qtex );
@@ -472,7 +490,7 @@ void *qmanager_thread(void * arg)
 }
 
 void sighandler(int signal) {
-	syslog(LOG_INFO, "Received signal %d: %s.  Shutting down.\n", signal, strsignal(signal));
+	syslog(LOG_INFO, "RM: Received signal %d: %s.  Shutting down.\n", signal, strsignal(signal));
 	exit (1);
 }
 
