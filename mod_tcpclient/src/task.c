@@ -91,7 +91,7 @@ void monitor_sock_conn(configurator *cfg)
 			sprintf(sndbuf, "%d", cfg->peers[i].port);
 			getaddrinfo(cfg->peers[i].ip, sndbuf, &hints, &res);
  			gconn_list[i].fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-			rc = connect(conn, res->ai_addr, res->ai_addrlen);
+			rc = connect(gconn_list[i].fd, res->ai_addr, res->ai_addrlen);
         		//setnonblock(gconn_list[i].fd);
         		setsockopt(gconn_list[i].fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
         		setsockopt(gconn_list[i].fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(int));
