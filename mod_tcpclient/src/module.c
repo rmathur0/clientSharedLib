@@ -39,9 +39,9 @@ int get_peers()
 }
 
 
-int register_resp_cb(TransactionCallback_Res_f *callback_f,void *callback_param)
+int register_req_cb(TransactionCallback_Req_f *callback_f)
 {
-	return (register_callback_responses(callback_f, callback_param));
+	return (register_callback_request(callback_f));
 }
 
 int sl_send_buf(request_t *req, TransactionCallback_Res_f *callback_f, void *callback_param)

@@ -493,7 +493,7 @@ int register_callback_responses(TransactionCallback_Res_f *callback_f,void *call
 	return 1;
 }
 
-int register_callback_requests(TransactionCallback_Req_f *callback_f)
+int register_callback_request(TransactionCallback_Req_f *callback_f)
 {
 	req_cb.reg_req_cb = callback_f;
 	return 1;

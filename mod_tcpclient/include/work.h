@@ -43,6 +43,7 @@ void *generic_receive_from_fd(int fd, int *ret);
 /* Assigns fd to different fd_sets */
 int build_fd_sets(int fd, fd_set *read_fds, fd_set *write_fds, fd_set *except_fds);
 
+int register_callback_request(TransactionCallback_Req_f *callback_f);
 int register_callback_responses(TransactionCallback_Res_f *callback_f,void *callback_param);
 int ready_to_send(request_t *req, TransactionCallback_Res_f *callback_f, void *callback_param);
 #endif
