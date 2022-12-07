@@ -26,7 +26,7 @@ con_t *create_peers(configurator *cfg)
 	struct addrinfo hints, *res;
 	char sndbuf[5];
 
-	syslog(LOG_INFO, "Creating peer connections");
+	syslog(LOG_INFO, "RM: Creating peer connections");
 	gconn_list = (con_t*)calloc(cfg->num_peers, sizeof(con_t));
 	memset(sndbuf, 0, 5);
         memset(&hints, 0, sizeof hints);
@@ -37,7 +37,7 @@ con_t *create_peers(configurator *cfg)
         {
 		retry = 1;
 		sprintf(sndbuf, "%d", cfg->peers[i].port);
-		syslog(LOG_INFO,"Creating socket connection to %s:%s",cfg->peers[i].ip, sndbuf);
+		syslog(LOG_INFO,"RM: Creating socket connection to %s:%s",cfg->peers[i].ip, sndbuf);
 		getaddrinfo(cfg->peers[i].ip, sndbuf, &hints, &res);
 		conn = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 connect_now:            if (conn < 0) {
@@ -45,11 +45,11 @@ connect_now:            if (conn < 0) {
                         exit(1);
                 }
                 rc = connect(conn, res->ai_addr, res->ai_addrlen);
-		syslog(LOG_INFO,"connect returned [%d] \n",rc);
+		syslog(LOG_INFO,"RM: connect returned [%d] \n",rc);
                 if (rc < 0) {
-                        syslog (LOG_INFO,"\nConnect failed for [%s:%d] \n", cfg->peers[i].ip, cfg->peers[i].port);
+                        syslog (LOG_INFO,"RM: Connect failed for [%s:%d] \n", cfg->peers[i].ip, cfg->peers[i].port);
                         if (retry == 1) {
-				perror("\nRetrying in 5 seconds.\n");
+				perror("RM: Retrying in 5 seconds.\n");
 				close(conn);
 				retry--;
 				sleep(5);
@@ -65,7 +65,7 @@ connect_now:            if (conn < 0) {
                 gconn_list[i].state = 1;
                 gconn_list[i].peer_id = i;
         }
-	syslog(LOG_INFO,"Leaving create_peers");
+	syslog(LOG_INFO,"RM: Leaving create_peers");
 	return gconn_list;
 }
 
@@ -77,7 +77,7 @@ void monitor_sock_conn(configurator *cfg)
         char sndbuf[5];
 	socklen_t len = sizeof (err);
 
-	syslog (LOG_INFO,"\nmonitoring TCP connections.\n");
+	syslog (LOG_INFO,"RM: monitoring TCP connections.\n");
 	memset(sndbuf, 0, 5);
         memset(&hints, 0, sizeof hints);
         hints.ai_family = AF_UNSPEC;
@@ -85,7 +85,7 @@ void monitor_sock_conn(configurator *cfg)
         for (i = 0; i < cfg->num_peers; i++) {
 	       	rc = getsockopt (gconn_list[i].fd, SOL_SOCKET, SO_ERROR, &err, &len);
         	if ((rc != 0)||(err != 0)) {
-        		syslog (LOG_INFO,"\nerror getting getsockopt return code: %s and socket error: %s\n", strerror(rc), strerror(err));
+        		syslog (LOG_INFO,"RM: error getting getsockopt return code: %s and socket error: %s\n", strerror(rc), strerror(err));
         		close(gconn_list[i].fd);
         		gconn_list[i].state=0;
 			sprintf(sndbuf, "%d", cfg->peers[i].port);
@@ -376,7 +376,7 @@ int parse_xml_attribute(char *in,int in_len, char *startKey, char *endKey, char 
 		}
 		else if(strncmp(&in[i], endKey,strlen(endKey)) == 0)
 		{
-			syslog(LOG_INFO,"\nKeyName:%s, KeyValue: %.*s\n", startKey,i-j,in+j);
+			syslog(LOG_INFO,"RM: KeyName:%s, KeyValue: %.*s\n", startKey,i-j,in+j);
 			*out_len=i-j;
 			out=in+j;
 			return 1;

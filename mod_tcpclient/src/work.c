@@ -22,10 +22,10 @@ void sighandler(int signal);
 
 
 void *monitor_thread(void *arg) {
-        syslog(LOG_INFO,"\nInside monitor thread\n");
+        syslog(LOG_INFO,"RM: Inside monitor thread\n");
         while(1)
         {
-		syslog (LOG_INFO,"\nmonitoring TCP connections.\n");
+		syslog (LOG_INFO,"RM: monitoring TCP connections.\n");
 		monitor_sock_conn(ref_gcfg);
 		sleep(MONITORING_PERIOD);
         }
@@ -59,8 +59,10 @@ void *recv_worker_thread(void *arg) {
                 switch(rc)
                 {
                         case 0:
+				close(c->fd);
+				c->state = 0;
 				if (message)
-				free(message);
+					free(message);
 				message = NULL;
 				/* It appears connection is lost, sleep for 10 sec and let monitor thread recreate the conection */
                         	sleep(MONITORING_PERIOD);
@@ -215,7 +217,7 @@ void *send_worker_thread(void *arg)
         con_t *c = (con_t*)arg;
 	msgque_t *node;
 
-        syslog(LOG_INFO,"\nInside send_worker_thread\n");
+        syslog(LOG_INFO,"RM: Inside send_worker_thread\n");
         while(1)
        {
 		pthread_mutex_lock( &condition_mutex );
@@ -427,17 +429,17 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
         if(read_bytes!= total_size)
         {
         	if (read_bytes == 0) {
-                	syslog(LOG_INFO,"\nPIPE broken, attempting to create/join again.\n");
+                	syslog(LOG_INFO,"Socket broken, attempting to create/join again.\n");
 			return NULL;
                 } else if (read_bytes < 0) {
                         if(errno == EWOULDBLOCK || errno == EAGAIN|| errno == EINTR) {
                         	goto again;
                         }
                 } else {
-                        syslog(LOG_INFO,"\nReceived bytes:%d, total bytes:%d\n", read_bytes, total_size);
+                        syslog(LOG_INFO,"RM: Received bytes:%d, total bytes:%d\n", read_bytes, total_size);
                         total_read+=read_bytes;
                         total_size-=read_bytes;
-                        syslog(LOG_INFO,"\nReceived bytes:%d, left bytes:%d\n", total_read, total_size);
+                        syslog(LOG_INFO,"RM: Received bytes:%d, left bytes:%d\n", total_read, total_size);
                         if(errno == EWOULDBLOCK || errno == EAGAIN||errno == EINTR)
                                  goto again;
                 }
