@@ -351,7 +351,8 @@ msgque_t *pop_from_msgq(msgque_t **head, int con)
 		return NULL;
 	if (temp->conn == con) {
 		*head = (*head)->next;
-		(*head)->prev = NULL;
+		if (*head)
+			(*head)->prev = NULL;
 		temp->next = temp->prev = NULL;
 		return temp;
 	}
