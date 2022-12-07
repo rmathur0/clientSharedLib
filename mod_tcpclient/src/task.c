@@ -253,39 +253,45 @@ reassign_conn:	con = glast_con_rr % num_peers;
 
 void rem_expired_idq(tsidque_t **head)
 {
-	tsidque_t *node = *head, *temp;
+	tsidque_t *temp = *head, *node;
 	struct timeval now;
 
-	if (node == NULL)
+	if (temp == NULL)
 		return;
-	do
+	gettimeofday(&now, NULL);
+
+        if ( (temp->ETime.tv_sec < now.tv_sec) || ((temp->ETime.tv_sec == now.tv_sec) && (temp->ETime.tv_usec < now.tv_usec)) )
 	{
-		temp = node->next;
-		gettimeofday(&now, NULL);
-		if ( (node->ETime.tv_sec < now.tv_sec) || ((node->ETime.tv_sec == now.tv_sec) && (node->ETime.tv_usec < now.tv_usec)) )
-		{
-			/* First element */
-			if (node->prev == NULL) {
-				*head = node->next;
+                *head = (*head)->next;
+                (*head)->prev = NULL;
+                temp->next = temp->prev = NULL;
+		free(temp->id);
+		free(temp->callback_param);
+                free(temp);
+        }
+        else    
+        {       
+                while(temp->next != NULL)
+                {       
+                        if ( (temp->next->ETime.tv_sec < now.tv_sec) || ((temp->next->ETime.tv_sec == now.tv_sec) && (temp->next->ETime.tv_usec < now.tv_usec)) )
+                        {       
+                                node = temp->next;
+                                temp->next = temp->next->next;
+                                if (temp->next)
+                                        temp->next->prev = temp;
+                                node->next = node->prev = NULL;
 				free(node->id);
+				free(node->callback_param);
 				free(node);
-				break;
-			}
-			else if (node->next == NULL) { /* Last element */
-				*head = node->prev;
-				node->prev->next = NULL;
-				free(node->id);
-				free(node);
-				break;
-			} else {
-				node->prev->next = node->next;
-				node->next->prev = node->prev;
-				free(node->id);
-				free(node);
-			}
-		}
-			node = temp;
-	}while(node != NULL);
+                                break;
+                        }
+                        else    
+                        {       
+                                temp = temp->next;
+                        }
+                }
+        }       
+        
 }
 
 
@@ -339,27 +345,36 @@ add:		temp->conn = add_entry_idq(idhead, tid, sid, callback_f, callback_param);
 msgque_t *pop_from_msgq(msgque_t **head, int con)
 {
 	msgque_t *temp = *head;
-	
+	msgque_t *node = NULL;
+
 	if (temp == NULL)
 		return NULL;
-	if ((temp->prev == NULL) && (temp->conn == con)) {
-		*head = temp->next;
+	if (temp->conn == con) {
+		*head = (*head)->next;
+		(*head)->prev = NULL;
+		temp->next = temp->prev = NULL;
 		return temp;
 	}
-	if ((temp->next == NULL) && (temp->conn == con)) {
-		*head = temp->prev;
-		return temp;
-	}
-	while(temp->next != NULL)
+	else
 	{
-		if (temp->conn == con)
+		while(temp->next != NULL)
 		{
-			temp->prev->next = temp->next;
-			temp->next->prev = temp->prev;
-			break;
+			if (temp->next->conn == con)
+			{
+				node = temp->next;
+				temp->next = temp->next->next;
+				if (temp->next)
+					temp->next->prev = temp;
+				node->next = node->prev = NULL;
+				break;
+			}
+			else
+			{
+				temp = temp->next;
+			}
 		}
-		temp = temp->next;
 	}
+
 	return temp;
 }
 
