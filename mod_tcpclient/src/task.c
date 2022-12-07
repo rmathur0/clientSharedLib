@@ -263,7 +263,8 @@ void rem_expired_idq(tsidque_t **head)
         if ( (temp->ETime.tv_sec < now.tv_sec) || ((temp->ETime.tv_sec == now.tv_sec) && (temp->ETime.tv_usec < now.tv_usec)) )
 	{
                 *head = (*head)->next;
-                (*head)->prev = NULL;
+		if (*head)
+                	(*head)->prev = NULL;
                 temp->next = temp->prev = NULL;
 		free(temp->id);
 		free(temp->callback_param);
