@@ -266,16 +266,16 @@ void rem_expired_idq(tsidque_t **head)
 		{
 			/* First element */
 			if (node->prev == NULL) {
+				*head = node->next;
 				free(node->id);
 				free(node);
-				*head = node->next;
 				break;
 			}
 			else if (node->next == NULL) { /* Last element */
+				*head = node->prev;
 				node->prev->next = NULL;
 				free(node->id);
 				free(node);
-				*head = node->prev;
 				break;
 			} else {
 				node->prev->next = node->next;
