@@ -14,6 +14,7 @@ res_xml_cb res_cb;
 req_xml_cb req_cb;
 
 pthread_mutex_t qtex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t conntex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t condition_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t  condition_cond  = PTHREAD_COND_INITIALIZER;
 
@@ -25,8 +26,9 @@ void *monitor_thread(void *arg) {
         syslog(LOG_INFO,"RM: Inside monitor thread\n");
         while(1)
         {
-		syslog (LOG_INFO,"RM: monitoring TCP connections.\n");
+		pthread_mutex_lock( &conntex );
 		monitor_sock_conn(ref_gcfg);
+		pthread_mutex_unlock( &conntex );
 		sleep(MONITORING_PERIOD);
         }
         pthread_exit(NULL);
@@ -51,9 +53,15 @@ void *recv_worker_thread(void *arg) {
         while(1)
         {
 		tid = NULL; sid = NULL; out = NULL; out_len = 0;
-
-		if (c->state != 1)
-			sleep(MONITORING_PERIOD);
+reconn:
+		while (c->state != 1)
+		{
+			pthread_mutex_lock( &conntex );
+                	recreate_conn(c->peer_id, ref_gcfg);
+                	pthread_mutex_unlock( &conntex );
+			if (c->state != 1)
+				sleep(1);
+		}
 		elapsed_msecs = 0;
                 message = receive_from_fd(c->fd, &rc);
                 switch(rc)
@@ -64,9 +72,8 @@ void *recv_worker_thread(void *arg) {
 				if (message)
 					free(message);
 				message = NULL;
-				/* It appears connection is lost, sleep for 10 sec and let monitor thread recreate the conection */
-                        	sleep(MONITORING_PERIOD);
-				break;
+				/* It appears connection is lost, recreate the conection */
+                        	goto reconn;
                         default:
 				/* EVENT based message received */
 				parse_xml_attribute(message, rc, "<EVENT>", "</EVENT>", msg_typ, &out_len);
@@ -216,7 +223,7 @@ void *send_worker_thread(void *arg)
         /* TODO change pbuf tyoe from char to xml structure */
         con_t *c = (con_t*)arg;
 	msgque_t *node;
-
+	char msglen[5];
         syslog(LOG_INFO,"RM: Inside send_worker_thread\n");
         while(1)
        {
@@ -226,8 +233,10 @@ void *send_worker_thread(void *arg)
 			pthread_cond_wait( &condition_cond, &condition_mutex );
 		}
 		pthread_mutex_unlock( &condition_mutex );
+
+		/* In hopes that receive_thread has reconnected */
 		if (c->state != 1)
-                        sleep(MONITORING_PERIOD);
+                        sleep(READ_SEC_TO);
 
                 /* ToDo: Acquire lock on msgque and tsidque */
 		pthread_mutex_lock( &qtex );
@@ -237,7 +246,9 @@ void *send_worker_thread(void *arg)
 			sleep(1);
                         continue;
 		}
-		send_to_fd(c->fd,(char*)&node->len, sizeof(node->len));
+		memset(msglen, 0, 5);
+		sprintf(msglen,"%d", node->len);
+		send_to_fd(c->fd, msglen, strlen(msglen));
 		syslog(LOG_INFO,"RM: Sending [%s] to kamailio",node->data->req_buf);
                 send_to_fd(c->fd, node->data->req_buf, node->len);
 		free(node->data->req_buf);

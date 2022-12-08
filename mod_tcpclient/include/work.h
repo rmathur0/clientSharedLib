@@ -2,7 +2,7 @@
 #define __WORK_H_
 
 #include "module.h"
-#define MONITORING_PERIOD 30
+#define MONITORING_PERIOD 10
 
 typedef struct _res_xml_interface {
 	TransactionCallback_Res_f *reg_res_cb;

@@ -102,6 +102,34 @@ void monitor_sock_conn(configurator *cfg)
         }
 }
 
+void recreate_conn(int pid, configurator *cfg)
+{
+        int i = 0, rc = -1, err = 0; 
+        int keepalive = 1, keepcnt = 5, keepidle = 30, keepintvl = 120;
+        struct addrinfo hints, *res;
+        char sndbuf[5]; 
+        socklen_t len = sizeof (err);
+        
+        syslog (LOG_INFO,"RM: Trying to recreate TCP connection..\n");
+        memset(sndbuf, 0, 5);
+        memset(&hints, 0, sizeof hints);
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
+	sprintf(sndbuf, "%d", cfg->peers[pid].port);
+	getaddrinfo(cfg->peers[pid].ip, sndbuf, &hints, &res);
+	gconn_list[pid].state = 0;
+	gconn_list[pid].fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+	rc = connect(gconn_list[pid].fd, res->ai_addr, res->ai_addrlen);
+        syslog(LOG_INFO,"RM: Upon recreation, connect returned [%d] \n",rc);
+        if (rc < 0) {
+        	syslog (LOG_INFO,"RM: Connect failed again for [%s:%d] \n", cfg->peers[pid].ip, cfg->peers[pid].port);
+        }
+	setsockopt(gconn_list[pid].fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
+        setsockopt(gconn_list[pid].fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(int));
+        setsockopt(gconn_list[pid].fd, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(int));
+        setsockopt(gconn_list[pid].fd, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(int));
+        gconn_list[pid].state = 1;
+}
 
 /* Check if provided ID (TID+SID) is present in the connection Q */
 int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn)

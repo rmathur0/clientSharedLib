@@ -7,7 +7,7 @@
 #define MAX_BUF 2050
 
 /* ID expiration time */
-#define EXPIRY 7200
+#define EXPIRY 300
 
 /* Socket read timeout */
 #define READ_SEC_TO 5
@@ -55,6 +55,9 @@ con_t *create_peers(configurator *cfg);
 
 /* Monitor peers on con_t */
 void monitor_sock_conn(configurator *cfg);
+
+/* On demand recreate connection to a peer based on it's id*/
+void recreate_conn(int pid, configurator *cfg);
 
 /* Check if provided ID is present in the connection Q */
 int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn);
