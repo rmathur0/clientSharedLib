@@ -247,7 +247,7 @@ void *send_worker_thread(void *arg)
                         continue;
 		}
 		memset(msglen, 0, 5);
-		sprintf(msglen,"%d", node->len);
+		sprintf(msglen,"%04d", node->len);
 		send_to_fd(c->fd, msglen, strlen(msglen));
 		syslog(LOG_INFO,"RM: Sending [%s] to kamailio",node->data->req_buf);
                 send_to_fd(c->fd, node->data->req_buf, node->len);
