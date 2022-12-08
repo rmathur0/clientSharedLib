@@ -414,6 +414,7 @@ int send_to_fd(int fd, char *buf, int len)
 		sent = send(fd, buf+total_sent, len-total_sent, MSG_DONTWAIT|MSG_NOSIGNAL);
 		if (sent < 0)
 		{
+			syslog(LOG_INFO,"\nsend() returned %d bytes. errno=%d\n", sent, errno);
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				continue;
 			else
