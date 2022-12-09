@@ -37,7 +37,7 @@ void *monitor_thread(void *arg) {
 
 void *recv_worker_thread(void *arg) {
 	con_t *c = (con_t*)arg;
-	char* message = NULL, *out = NULL, *resp = NULL, *tid = NULL, *sid = NULL, *msg_typ = NULL, *typ = NULL;
+	char* message = NULL, *out = NULL, *resp = NULL, *tid = NULL, *msg_typ = NULL, *typ = NULL;
 	int rc = 0, activity = -1, max_fd = 0, out_len = 0, retcode = 0, lookup = 0;
         fd_set read_fds, write_fds, except_fds;
 	struct timeval tv;
@@ -45,6 +45,7 @@ void *recv_worker_thread(void *arg) {
 	request_t *req;
 	response_t *res;
 	tsidque_t n;
+	char is_sid_present = 0;
 
 	tv.tv_sec=READ_SEC_TO;
 	tv.tv_usec=READ_USEC_TO;
@@ -52,7 +53,7 @@ void *recv_worker_thread(void *arg) {
         syslog(LOG_INFO,"RM: Inside worker thread [%d]", c->peer_id);
         while(1)
         {
-		tid = NULL; sid = NULL; out = NULL; out_len = 0;
+		tid = NULL; is_sid_present = 0; out = NULL; out_len = 0; req = NULL; res = NULL;
 reconn:
 		while (c->state != 1)
 		{
@@ -93,23 +94,27 @@ reconn:
                                                        	tid = (char*)calloc(out_len+1, sizeof(char));
                                                        	memcpy(tid, out, out_len);
                                                        	pthread_mutex_lock( &qtex );
-                                                       	lookup = lookup_ID_idq(&gtsidq, tid, NULL, &elapsed_msecs, &n);
+                                                       	lookup = lookup_ID_idq(&gtsidq, tid, &elapsed_msecs, &n);
                                                        	pthread_mutex_unlock( &qtex );
 							if (lookup == 1)
                                                                {
                                                                        req = (request_t*)calloc(1, sizeof(request_t));
                                                                        req->req_buf = message;
                                                                        req->msg_len = rc;
-                                                                       req->no_transaction = 0;
+                                                                       req->no_transaction = 1;
                                                                        req->picked_up = 1;
-                                                                       req_cb.reg_req_cb(0, req, elapsed_msecs);
+                                                                       req_cb.reg_req_cb(1, req, elapsed_msecs);
                                                                }
                                                                else {
-                                                                       /* When timeout, don't call any cb fn */
-                                                                       free(message); message = NULL;
+                                                                       req = (request_t*)calloc(1, sizeof(request_t));
+                                                                       req->req_buf = message;
+                                                                       req->msg_len = rc;
+                                                                       req->no_transaction = 0;
+                                                                       req->picked_up = 0;
+                                                                       req_cb.reg_req_cb(0, req, elapsed_msecs);
                                                                }
 							if(typ) free(typ); if(tid) free(tid);
-							typ = NULL; sid = NULL; tid = NULL; out = NULL; out_len = 0;
+							typ = NULL; tid = NULL; out = NULL; out_len = 0;
 						}
 						else 
 						{
@@ -124,7 +129,7 @@ reconn:
 				    			tid = (char*)calloc(out_len+1, sizeof(char));
                                            		memcpy(tid, out, out_len);
 				    			pthread_mutex_lock( &qtex );
-				   	 		lookup = lookup_ID_idq(&gtsidq, tid, NULL, &elapsed_msecs, &n);
+				   	 		lookup = lookup_ID_idq(&gtsidq, tid, &elapsed_msecs, &n);
 				    			pthread_mutex_unlock( &qtex );
 							res = (response_t*)calloc(1, sizeof(response_t));
                                                         strcpy(res->id, tid);
@@ -134,8 +139,8 @@ reconn:
 								n.callback_f(0, n.callback_param, res, elapsed_msecs); 
 							else
 								n.callback_f(1, n.callback_param, res, elapsed_msecs);
-				    			free(tid); free(sid);
-				    			tid = NULL; sid = NULL;
+				    			free(tid); 
+				    			tid = NULL; 
 				    			out = NULL; out_len = 0;
 						}
 					}
@@ -156,16 +161,13 @@ reconn:
                                                 if (retcode == 1)
                                                 {
 							parse_xml_attribute(message, rc, "<SID>", "</SID>", out, &out_len);
-							sid = (char*)calloc(out_len+1, sizeof(char));
-                                                        memcpy(sid, out, out_len);
+							if (out_len > 0)
+								is_sid_present = 1;
 							out = NULL; out_len = 0;
 							parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
                                                         tid = (char*)calloc(out_len+1, sizeof(char));
 							memcpy(tid, out, out_len);
-                                                        pthread_mutex_lock( &qtex );
-                                                        lookup = lookup_ID_idq(&gtsidq, tid, sid, &elapsed_msecs, &n);
-                                                        pthread_mutex_unlock( &qtex );
-                                                        if (lookup == 1)
+                                                        if (is_sid_present == 1)
                                                         {
                                                         	req = (request_t*)calloc(1, sizeof(request_t));
                                                                 req->req_buf = message;
@@ -189,26 +191,38 @@ reconn:
                                                 	free(resp); resp = NULL;
                                                 	out = NULL; out_len = 0;
 							parse_xml_attribute(message, rc, "<SID>", "</SID>", out, &out_len);
-                                                        memcpy(sid, out, out_len);
+							if (out_len > 0)
+								is_sid_present = 1;
                                                         out = NULL; out_len = 0;
                                                         parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
 							tid = (char*)calloc(out_len+1, sizeof(char));
 							memcpy(tid, out, out_len);
-							pthread_mutex_lock( &qtex );
-                                                	lookup = lookup_ID_idq(&gtsidq, tid, sid, &elapsed_msecs, &n);
-                                                	pthread_mutex_unlock( &qtex );
-							res = (response_t*)calloc(1, sizeof(response_t));
-                                                        strcpy(res->id, tid);
-                                                        strcat(res->id, sid);
-                                                        res->retcode = retcode;
-                                                        res->query_res = message;
-                                                	if (lookup == 1)
-                                                        	n.callback_f(0, n.callback_param, res, elapsed_msecs);
-                                                	else
-								n.callback_f(1, n.callback_param, res, elapsed_msecs);
-                                                	free(tid); free(sid);
-                                                	tid = NULL; sid = NULL;
-                                                	out = NULL; out_len = 0;
+							if (is_sid_present == 1)
+							{
+								req = (request_t*)calloc(1, sizeof(request_t));
+                                                                req->req_buf = message;
+                                                                req->msg_len = rc;
+                                                                req->no_transaction = 0;
+                                                                req->picked_up = 1;
+                                                                req_cb.reg_req_cb(0, req, elapsed_msecs);
+							}
+							else
+							{
+								pthread_mutex_lock( &qtex );
+                                                		lookup = lookup_ID_idq(&gtsidq, tid, &elapsed_msecs, &n);
+                                                		pthread_mutex_unlock( &qtex );
+								res = (response_t*)calloc(1, sizeof(response_t));
+                                                        	strcpy(res->id, tid);
+                                                        	res->retcode = retcode;
+                                                        	res->query_res = message;
+                                                		if (lookup == 1)
+                                                        		n.callback_f(0, n.callback_param, res, elapsed_msecs);
+                                                		else
+									n.callback_f(1, n.callback_param, res, elapsed_msecs);
+                                                		free(tid); 
+                                                		tid = NULL; 
+                                                		out = NULL; out_len = 0;
+							}
 						}
 					}
 			}
@@ -351,7 +365,7 @@ fifo:
  		 * ToDo: tid and sid needs to be set inside xml structure
  		 * */
 		pthread_mutex_lock( &qtex );
-		push_to_msgq(&gmsgq, &gtsidq, req->id, NULL, req->msg_len, req, NULL, NULL);
+		push_to_msgq(&gmsgq, &gtsidq, req->id, req->msg_len, req, NULL, NULL);
 		pthread_mutex_unlock( &qtex );
 	}
 	pthread_exit(NULL);
@@ -361,7 +375,7 @@ int ready_to_send(request_t *req, TransactionCallback_Res_f *callback_f, void *c
 {
 	
 	pthread_mutex_lock( &qtex );
-	push_to_msgq(&gmsgq, &gtsidq, req->id, NULL, req->msg_len, req, callback_f, callback_param);
+	push_to_msgq(&gmsgq, &gtsidq, req->id, req->msg_len, req, callback_f, callback_param);
 	pthread_mutex_unlock( &qtex );
 	pthread_mutex_lock( &condition_mutex );
 	if (gmsgq->next == NULL)
@@ -414,14 +428,14 @@ int send_to_fd(int fd, char *buf, int len)
 		sent = send(fd, buf+total_sent, len-total_sent, MSG_DONTWAIT|MSG_NOSIGNAL);
 		if (sent < 0)
 		{
-			syslog(LOG_INFO,"\nsend() returned %d bytes. errno=%d\n", sent, errno);
+			syslog(LOG_INFO,"RM: send() returned %d bytes. errno=%d\n", sent, errno);
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				continue;
 			else
 				return -1;
 		} else if (sent == 0)
 		{
-			syslog(LOG_INFO,"\nsend() returned 0 bytes. It seems that peer can't accept data right now. Try again later.\n");
+			syslog(LOG_INFO,"RM: send() returned 0 bytes. It seems that peer can't accept data right now. Try again later.\n");
 			return -1;
 		}
 		total_sent += sent;
@@ -441,9 +455,10 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
         if(read_bytes!= total_size)
         {
         	if (read_bytes == 0) {
-                	syslog(LOG_INFO,"Socket broken, attempting to create/join again.\n");
+                	syslog(LOG_INFO,"RM: Socket broken, attempting to create/join again.\n");
 			return NULL;
                 } else if (read_bytes < 0) {
+			syslog(LOG_INFO,"RM: recv() returned %d bytes. errno=%d\n", read_bytes, errno);
                         if(errno == EWOULDBLOCK || errno == EAGAIN|| errno == EINTR) {
                         	goto again;
                         }
@@ -467,10 +482,12 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
                 if (burst_len > 0)
                 	read_bytes+=burst_len;
                 else if (burst_len == 0) {
+ 			syslog(LOG_INFO,"RM: Socket broken, attempting to create/join again.\n");
                         free(read_buf);
                         return NULL;
                 }
                 else {
+			syslog(LOG_INFO,"RM: recv() returned %d bytes. errno=%d\n", read_bytes, errno);
                         if(errno == EWOULDBLOCK || errno == EAGAIN||errno == EINTR)
                         	continue;
                 }

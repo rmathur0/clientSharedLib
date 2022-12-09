@@ -104,11 +104,10 @@ void monitor_sock_conn(configurator *cfg)
 
 void recreate_conn(int pid, configurator *cfg)
 {
-        int i = 0, rc = -1, err = 0; 
+        int rc = -1, err = 0; 
         int keepalive = 1, keepcnt = 5, keepidle = 30, keepintvl = 120;
         struct addrinfo hints, *res;
         char sndbuf[5]; 
-        socklen_t len = sizeof (err);
         
         syslog (LOG_INFO,"RM: Trying to recreate TCP connection..\n");
         memset(sndbuf, 0, 5);
@@ -122,7 +121,8 @@ void recreate_conn(int pid, configurator *cfg)
 	rc = connect(gconn_list[pid].fd, res->ai_addr, res->ai_addrlen);
         syslog(LOG_INFO,"RM: Upon recreation, connect returned [%d] \n",rc);
         if (rc < 0) {
-        	syslog (LOG_INFO,"RM: Connect failed again for [%s:%d] \n", cfg->peers[pid].ip, cfg->peers[pid].port);
+        	syslog (LOG_INFO,"RM: Connect failed again for [%s:%d] return code:[%s] & socket error:[%s]\n", cfg->peers[pid].ip, cfg->peers[pid].port, strerror(rc), strerror(err));
+		return;
         }
 	setsockopt(gconn_list[pid].fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
         setsockopt(gconn_list[pid].fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(int));
@@ -132,20 +132,14 @@ void recreate_conn(int pid, configurator *cfg)
 }
 
 /* Check if provided ID (TID+SID) is present in the connection Q */
-int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn)
+int is_ID_present_idq(tsidque_t **head, char *tid, int *conn)
 {
 	tsidque_t *temp = *head;
 	char *temp_id;
 
 	if (*head == NULL)
 		return 0;
-	if (sid && *sid)
-	{
-		temp_id = (char*)calloc((strlen(tid) + strlen(sid) + 1), sizeof(char));
-		strcpy(temp_id, tid);
-		strcat(temp_id, sid);
-	}
-	else 
+	if (tid && *tid) 
 	{
 		temp_id = (char*)calloc((strlen(tid) + 1), sizeof(char));
                 strcpy(temp_id, tid);
@@ -165,7 +159,7 @@ int is_ID_present_idq(tsidque_t **head, char *tid, char *sid, int *conn)
 	return 0;
 }
 
-int lookup_ID_idq(tsidque_t **head, char *tid, char *sid, long *elapsed_msecs, tsidque_t *node)
+int lookup_ID_idq(tsidque_t **head, char *tid, long *elapsed_msecs, tsidque_t *node)
 {
         tsidque_t *temp = *head;
         char *temp_id;
@@ -175,13 +169,7 @@ int lookup_ID_idq(tsidque_t **head, char *tid, char *sid, long *elapsed_msecs, t
 
         if (*head == NULL)
                 return 0;
-        if (sid && *sid)
-        {
-                temp_id = (char*)calloc((strlen(tid) + strlen(sid) + 1), sizeof(char));
-                strcpy(temp_id, tid);
-                strcat(temp_id, sid);
-        }
-        else
+        if (tid && *tid)
         {
                 temp_id = (char*)calloc((strlen(tid) + 1), sizeof(char));
                 strcpy(temp_id, tid);
@@ -226,25 +214,23 @@ int update_entry_idq(tsidque_t **head, char *id, TransactionCallback_Res_f *call
 	return -1;
 }
 
-int add_entry_idq(tsidque_t **head, char *tid, char *sid, TransactionCallback_Res_f *callback_f, void *callback_param)
+int add_entry_idq(tsidque_t **head, char *tid, TransactionCallback_Res_f *callback_f, void *callback_param)
 {
 	tsidque_t *temp = (tsidque_t*)calloc(1, sizeof(tsidque_t));
 	char *temp_id;
 	tsidque_t *trav = *head;
-	int rc = -1, num_peers = -1, con = -1, ret = -1;
+	int num_peers = -1, con = -1;
 	temp->prev = temp->next = NULL;
 
-	if (sid && *sid)
-        {
-                temp_id = (char*)calloc((strlen(tid) + strlen(sid) + 1), sizeof(char));
-                strcpy(temp_id, tid);
-                strcat(temp_id, sid);
-        }
-        else 
+	if (tid && *tid)
         {
                 temp_id = (char*)calloc(strlen(tid)+1, sizeof(char));
 		strcpy(temp_id, tid);
         }
+	else
+	{
+		return -1;
+	}
 	temp->id = temp_id;
 	gettimeofday(&temp->ATime, NULL);
 	temp->ETime = temp->ATime;
@@ -325,7 +311,7 @@ void rem_expired_idq(tsidque_t **head)
 
 
 /* Add element in msgque_t */
-void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, int len, request_t *data, TransactionCallback_Res_f *callback_f, void *callback_param)
+void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, int len, request_t *data, TransactionCallback_Res_f *callback_f, void *callback_param)
 {
 	msgque_t *trav = *msghead;
 	msgque_t *temp = (msgque_t*)calloc(1, sizeof(msgque_t));
@@ -333,22 +319,18 @@ void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, 
         int rc = -1, ret = -1, con = -1;
 	temp->prev = temp->next = NULL;
 
-        if (sid && *sid)
-        {
-                temp_id = (char*)calloc((strlen(tid) + strlen(sid) + 1), sizeof(char));
-                strcpy(temp_id, tid);
-                strcat(temp_id, sid);
-        }
-        else
+        if (tid && *tid)
         {
                 temp_id = (char*)calloc(strlen(tid)+1, sizeof(char));
                 strcpy(temp_id, tid);
         }
+	else
+		return;
 	temp->data = data;
 	temp->len = len;
 	strcpy(temp->id, temp_id);
 	temp->conn = con;
-	rc = is_ID_present_idq(idhead, tid, sid, &temp->conn);
+	rc = is_ID_present_idq(idhead, tid, &temp->conn);
 	if (rc == 1)
 	{
 		ret = update_entry_idq(idhead, temp_id, callback_f, callback_param);
@@ -356,7 +338,7 @@ void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, char *sid, 
 			goto add;
 	}
 	else
-add:		temp->conn = add_entry_idq(idhead, tid, sid, callback_f, callback_param);
+add:		temp->conn = add_entry_idq(idhead, tid, callback_f, callback_param);
 	
 	if (trav == NULL)
         {
