@@ -475,7 +475,7 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
          received = atoi(lenbuf);
          syslog(LOG_INFO,"\nRM: Received string: \"%s\" and length is %d\n", lenbuf, received);
          read_bytes = 0;
-         read_buf = (char*)calloc(total_read+1, sizeof(char));
+         read_buf = (char*)calloc(received+1, sizeof(char));
          while(read_bytes < received)
          {
          	burst_len = recv(fd, read_buf+read_bytes, received-read_bytes, MSG_WAITALL);
