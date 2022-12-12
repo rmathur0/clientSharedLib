@@ -37,8 +37,9 @@ void *monitor_thread(void *arg) {
 
 void *recv_worker_thread(void *arg) {
 	con_t *c = (con_t*)arg;
-	char* message = NULL, *out = NULL, *resp = NULL, *tid = NULL, *msg_typ = NULL, *typ = NULL;
-	int rc = 0, activity = -1, max_fd = 0, out_len = 0, retcode = 0, lookup = 0;
+	char* message = NULL, *resp = NULL, *tid = NULL, *typ = NULL;
+	xchar out = {0,0};
+	int rc = 0, activity = -1, max_fd = 0, retcode = 0, lookup = 0;
         fd_set read_fds, write_fds, except_fds;
 	struct timeval tv;
 	long elapsed_msecs;
@@ -53,7 +54,7 @@ void *recv_worker_thread(void *arg) {
         syslog(LOG_INFO,"RM: Inside worker thread [%d]", c->peer_id);
         while(1)
         {
-		tid = NULL; is_sid_present = 0; out = NULL; out_len = 0; req = NULL; res = NULL;
+		tid = NULL; is_sid_present = 0; ; req = NULL; res = NULL;
 reconn:
 		while (c->state != 1)
 		{
@@ -77,22 +78,21 @@ reconn:
                         	goto reconn;
                         default:
 				/* EVENT based message received */
-				parse_xml_attribute(message, rc, "<EVENT>", "</EVENT>", msg_typ, &out_len);
-				if (out_len > 0)
+				parse_xml_attribute(message, rc, "<EVENT>", "</EVENT>", &out);
+				if (out.len > 0)
 				{
-					parse_xml_attribute(message, rc, "<TYPE>", "</TYPE>", out, &out_len);
-					if (out_len > 0)
+					parse_xml_attribute(message, rc, "<TYPE>", "</TYPE>", &out);
+					if (out.len > 0)
 					{
-						typ = (char*)calloc(out_len+1, sizeof(char));
-						memcpy(typ, out, out_len);
+						typ = (char*)calloc(out.len+1, sizeof(char));
+						memcpy(typ, out.s, out.len);
 						retcode = atoi(typ);
 						/* TYPE = 1; EVENT_REQUEST */
 						if (retcode == 1)
 						{
-                                                       	out = NULL; out_len = 0;
-                                                       	parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
-                                                       	tid = (char*)calloc(out_len+1, sizeof(char));
-                                                       	memcpy(tid, out, out_len);
+                                                       	parse_xml_attribute(message, rc, "<TID>", "</TID>", &out);
+                                                       	tid = (char*)calloc(out.len+1, sizeof(char));
+                                                       	memcpy(tid, out.s, out.len);
                                                        	pthread_mutex_lock( &qtex );
                                                        	lookup = lookup_ID_idq(&gtsidq, tid, &elapsed_msecs, &n);
                                                        	pthread_mutex_unlock( &qtex );
@@ -114,20 +114,19 @@ reconn:
                                                                        req_cb.reg_req_cb(0, req, elapsed_msecs);
                                                                }
 							if(typ) free(typ); if(tid) free(tid);
-							typ = NULL; tid = NULL; out = NULL; out_len = 0;
+							typ = NULL; tid = NULL; 
 						}
 						else 
 						{
 						/* EVENT RESPONSE */
-							parse_xml_attribute(message, rc, "<REPLY_CODE>", "</REPLY_CODE>", out, &out_len);
-				    			resp = (char*)calloc(out_len+1, sizeof(char));
-				    			memcpy(resp, out, out_len);
+							parse_xml_attribute(message, rc, "<REPLY_CODE>", "</REPLY_CODE>", &out);
+				    			resp = (char*)calloc(out.len+1, sizeof(char));
+				    			memcpy(resp, out.s, out.len);
 				    			retcode = atoi(resp);
 				    			free(resp); resp = NULL;
-				    			out = NULL; out_len = 0;
-				    			parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
-				    			tid = (char*)calloc(out_len+1, sizeof(char));
-                                           		memcpy(tid, out, out_len);
+				    			parse_xml_attribute(message, rc, "<TID>", "</TID>", &out);
+				    			tid = (char*)calloc(out.len+1, sizeof(char));
+                                           		memcpy(tid, out.s, out.len);
 				    			pthread_mutex_lock( &qtex );
 				   	 		lookup = lookup_ID_idq(&gtsidq, tid, &elapsed_msecs, &n);
 				    			pthread_mutex_unlock( &qtex );
@@ -141,7 +140,6 @@ reconn:
 								n.callback_f(1, n.callback_param, res, elapsed_msecs);
 				    			free(tid); 
 				    			tid = NULL; 
-				    			out = NULL; out_len = 0;
 						}
 					}
 					else {
@@ -150,23 +148,21 @@ reconn:
 				}
 				else {
 					/* SESSION based message received */
-					parse_xml_attribute(message, rc, "<TYPE>", "</TYPE>", out, &out_len);
-                                        if (out_len > 0)
+					parse_xml_attribute(message, rc, "<TYPE>", "</TYPE>", &out);
+                                        if (out.len > 0)
                                         {
-                                                typ = (char*)calloc(out_len+1, sizeof(char));
-                                                memcpy(typ, out, out_len);
+                                                typ = (char*)calloc(out.len+1, sizeof(char));
+                                                memcpy(typ, out.s, out.len);
                                                 retcode = atoi(typ);
                                                 /* TYPE = 1; SESSION_REQUEST */
-						out = NULL; out_len = 0;
                                                 if (retcode == 1)
                                                 {
-							parse_xml_attribute(message, rc, "<SID>", "</SID>", out, &out_len);
-							if (out_len > 0)
+							parse_xml_attribute(message, rc, "<SID>", "</SID>", &out);
+							if (out.len > 0)
 								is_sid_present = 1;
-							out = NULL; out_len = 0;
-							parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
-                                                        tid = (char*)calloc(out_len+1, sizeof(char));
-							memcpy(tid, out, out_len);
+							parse_xml_attribute(message, rc, "<TID>", "</TID>", &out);
+                                                        tid = (char*)calloc(out.len+1, sizeof(char));
+							memcpy(tid, out.s, out.len);
                                                         if (is_sid_present == 1)
                                                         {
                                                         	req = (request_t*)calloc(1, sizeof(request_t));
@@ -184,19 +180,17 @@ reconn:
 						else
 						{
 							/* SESSION RESPONSE */
-							parse_xml_attribute(message, rc, "<REPLY_CODE>", "</REPLY_CODE>", out, &out_len);
-							resp = (char*)calloc(out_len+1, sizeof(char));
-                                                	memcpy(resp, out, out_len);
+							parse_xml_attribute(message, rc, "<REPLY_CODE>", "</REPLY_CODE>", &out);
+							resp = (char*)calloc(out.len+1, sizeof(char));
+                                                	memcpy(resp, out.s, out.len);
                                                 	retcode = atoi(resp);
                                                 	free(resp); resp = NULL;
-                                                	out = NULL; out_len = 0;
-							parse_xml_attribute(message, rc, "<SID>", "</SID>", out, &out_len);
-							if (out_len > 0)
+							parse_xml_attribute(message, rc, "<SID>", "</SID>", &out);
+							if (out.len > 0)
 								is_sid_present = 1;
-                                                        out = NULL; out_len = 0;
-                                                        parse_xml_attribute(message, rc, "<TID>", "</TID>", out, &out_len);
-							tid = (char*)calloc(out_len+1, sizeof(char));
-							memcpy(tid, out, out_len);
+                                                        parse_xml_attribute(message, rc, "<TID>", "</TID>", &out);
+							tid = (char*)calloc(out.len+1, sizeof(char));
+							memcpy(tid, out.s, out.len);
 							if (is_sid_present == 1)
 							{
 								req = (request_t*)calloc(1, sizeof(request_t));
@@ -221,7 +215,6 @@ reconn:
 									n.callback_f(1, n.callback_param, res, elapsed_msecs);
                                                 		free(tid); 
                                                 		tid = NULL; 
-                                                		out = NULL; out_len = 0;
 							}
 						}
 					}
@@ -449,7 +442,6 @@ char *receive_from_fd(int fd, int *ret)
         char *read_buf=NULL, lenbuf[5];
         int total_read = 0, total_size = 4, received = 0, burst_len = 0;
 	
-	ret = &read_bytes;
 	memset(lenbuf, 0, 5);
 again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
         if(read_bytes!= total_size)
@@ -493,6 +485,7 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
                 }
         }
         syslog (LOG_INFO,"\nRM: Received msg: %s\n", read_buf);
+	*ret = received;
 	return read_buf;
 }
 

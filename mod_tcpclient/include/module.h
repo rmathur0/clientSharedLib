@@ -4,6 +4,11 @@
 #define KEY_SIZE 256
 #define SL_RCVFIFO "Fifo_ingress"
 
+typedef struct wc{
+        char *s;
+        int len;
+}xchar;
+
 typedef struct _config_endpoints
 {
     int port;

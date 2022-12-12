@@ -391,26 +391,28 @@ msgque_t *pop_from_msgq(msgque_t **head, int con)
 }
 
 
-int parse_xml_attribute(char *in,int in_len, char *startKey, char *endKey, char *out, int *out_len)
-{
-	int i=0, j=0;
-	for(i=0;i<in_len; ++i)
-	{
-		if(strncmp(&in[i], startKey, strlen(startKey)) == 0)
-		{
-			i+=strlen(startKey);
-			j=i;
-		}
-		else if(strncmp(&in[i], endKey,strlen(endKey)) == 0)
-		{
-			syslog(LOG_INFO,"RM: KeyName:%s, KeyValue: %.*s\n", startKey,i-j,in+j);
-			*out_len=i-j;
-			out=in+j;
-			return 1;
-		}
 
-	}
-	*out_len=0;
-	out = NULL;
-	return 0;
+int parse_xml_attribute(char *in,int in_len, char *startKey, char *endKey, xchar *out)
+{
+        int i=0, j=0;
+        for(i=0;i<in_len; ++i)
+        {
+                if(strncmp(&in[i], startKey, strlen(startKey)) == 0)
+                {
+                        i+=strlen(startKey);
+                        j=i;
+                }
+                else if(strncmp(&in[i], endKey,strlen(endKey)) == 0)
+                {
+                        printf("\nRM: KeyName:%s, KeyValue: %.*s\n", startKey,i-j,in+j);
+                        out->len=i-j;
+                        out->s=in+j;
+                        return 1;
+                }
+
+        }
+        out->len=0;
+        out->s = NULL;
+        return 0;
 }
+

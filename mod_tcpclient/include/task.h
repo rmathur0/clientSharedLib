@@ -84,5 +84,5 @@ void push_to_refq(refque_t **refhead, long addr);
 /* Pop element from refque_t for a connection*/
 long pop_from_refq(refque_t **head);
 
-int parse_xml_attribute(char *in,int in_len, char *startKey, char *endKey, char *out, int *out_len);
+int parse_xml_attribute(char *in,int in_len, char *startKey, char *endKey, xchar *out);
 #endif
