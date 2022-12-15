@@ -175,6 +175,21 @@ int lookup_ID_idq(tsidque_t **head, char *tid, long *elapsed_msecs, tsidque_t *n
                 strcpy(temp_id, tid);
                 temp_id = tid;
         }
+        if (temp->next == NULL)
+        {
+
+                if ( strcmp(temp_id, temp->id) == 0)
+                {
+                        gettimeofday(&curr, NULL);
+			time_elapsed = (curr.tv_sec - temp->ATime.tv_sec)*1000 + (curr.tv_usec - temp->ATime.tv_usec)/1000;
+			*elapsed_msecs = time_elapsed;
+			node->callback_f = temp->callback_f;
+			node->callback_param = temp->callback_param;
+                        free(temp_id);
+                        return 1;
+                }
+                temp = temp->next;
+        }
         while(temp->next != NULL)
         {
 
@@ -199,6 +214,18 @@ int update_entry_idq(tsidque_t **head, char *id, TransactionCallback_Res_f *call
 {
 	tsidque_t *temp = *head;
 
+        if(temp->next == NULL)
+        {
+                if ( strcmp(id, temp->id) == 0)
+                {
+                        gettimeofday(&temp->ATime, NULL);
+                        temp->ETime = temp->ATime;
+                        temp->ETime.tv_sec+= EXPIRY;
+                        temp->callback_f = callback_f;
+                        temp->callback_param = callback_param;
+                        return temp->conn;
+                }
+        }
 	while(temp->next != NULL)
 	{
 		if ( strcmp(id, temp->id) == 0)
@@ -210,6 +237,7 @@ int update_entry_idq(tsidque_t **head, char *id, TransactionCallback_Res_f *call
 			temp->callback_param = callback_param;
 			return temp->conn;
 		}
+		temp = temp->next;
 	}
 	return -1;
 }
