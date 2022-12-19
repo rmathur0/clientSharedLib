@@ -143,7 +143,6 @@ int is_ID_present_idq(tsidque_t **head, char *tid, int *conn)
 	{
 		temp_id = (char*)calloc((strlen(tid) + 1), sizeof(char));
                 strcpy(temp_id, tid);
-		temp_id = tid;
 	}
 	while(temp->next != NULL)
 	{
@@ -155,6 +154,12 @@ int is_ID_present_idq(tsidque_t **head, char *tid, int *conn)
 			return 1;
 		}
 		temp = temp->next;
+		if ( strcmp(temp_id, temp->id) == 0)
+		{
+			*conn = temp->conn;
+			free(temp_id);
+			return 1;
+		}
 	}
 	return 0;
 }
@@ -173,11 +178,10 @@ int lookup_ID_idq(tsidque_t **head, char *tid, long *elapsed_msecs, tsidque_t *n
         {
                 temp_id = (char*)calloc((strlen(tid) + 1), sizeof(char));
                 strcpy(temp_id, tid);
-                temp_id = tid;
         }
         if (temp->next == NULL)
         {
-
+		syslog(LOG_INFO, "RM: Only one element");
                 if ( strcmp(temp_id, temp->id) == 0)
                 {
                         gettimeofday(&curr, NULL);
@@ -186,13 +190,13 @@ int lookup_ID_idq(tsidque_t **head, char *tid, long *elapsed_msecs, tsidque_t *n
 			node->callback_f = temp->callback_f;
 			node->callback_param = temp->callback_param;
                         free(temp_id);
+			syslog(LOG_INFO, "RM: Found the ID, %s:%s", temp_id, temp->id);
                         return 1;
                 }
-                temp = temp->next;
         }
         while(temp->next != NULL)
         {
-
+		syslog(LOG_INFO,"RM: Checking the element, %s:%s",temp_id, temp->id);
                 if ( strcmp(temp_id, temp->id) == 0)
                 {
                         gettimeofday(&curr, NULL);
@@ -204,6 +208,16 @@ int lookup_ID_idq(tsidque_t **head, char *tid, long *elapsed_msecs, tsidque_t *n
                         return 1;
                 }
                 temp = temp->next;
+                if ( strcmp(temp_id, temp->id) == 0)
+                {
+                        gettimeofday(&curr, NULL);
+			time_elapsed = (curr.tv_sec - temp->ATime.tv_sec)*1000 + (curr.tv_usec - temp->ATime.tv_usec)/1000;
+			*elapsed_msecs = time_elapsed;
+			node->callback_f = temp->callback_f;
+			node->callback_param = temp->callback_param;
+                        free(temp_id);
+                        return 1;
+                }
         }
         return 0;
 
@@ -238,6 +252,15 @@ int update_entry_idq(tsidque_t **head, char *id, TransactionCallback_Res_f *call
 			return temp->conn;
 		}
 		temp = temp->next;
+		if ( strcmp(id, temp->id) == 0)
+		{
+			gettimeofday(&temp->ATime, NULL);
+			temp->ETime = temp->ATime;
+			temp->ETime.tv_sec+= EXPIRY;
+			temp->callback_f = callback_f;
+			temp->callback_param = callback_param;
+			return temp->conn;
+		}
 	}
 	return -1;
 }
