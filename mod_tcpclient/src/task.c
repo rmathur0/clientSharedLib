@@ -284,6 +284,7 @@ void rem_expired_idq(tsidque_t **head)
 		*head = temp->next;
 		free(temp);
 	}
+	temp = *head;
         while(temp != NULL)
         {       
         	if ( (temp->ETime.tv_sec < now.tv_sec) || ((temp->ETime.tv_sec == now.tv_sec) && (temp->ETime.tv_usec < now.tv_usec)) )
