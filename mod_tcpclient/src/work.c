@@ -58,11 +58,11 @@ void *recv_worker_thread(void *arg) {
 reconn:
 		while (c->state != 1)
 		{
-			pthread_mutex_lock( &conntex );
+			//pthread_mutex_lock( &conntex );
                 	recreate_conn(c->peer_id, ref_gcfg);
-                	pthread_mutex_unlock( &conntex );
-			if (c->state != 1)
-				sleep(1);
+                	//pthread_mutex_unlock( &conntex );
+			//if (c->state != 1)
+			//	sleep(1);
 		}
 		elapsed_msecs = 0;
                 message = receive_from_fd(c->fd, &rc);
@@ -307,7 +307,7 @@ int manage(configurator *cfg)
 		j+= 2;
 	}
 	sleep(1);
-	/* Thread for monitoring the connections to far right peers */
+	/* Thread for monitoring the connections to far right peers *
 	syslog (LOG_INFO,"\nRM: Creating monitor thread\n");
         rc = pthread_create(&monit_t, NULL, monitor_thread, NULL);
         if (rc != 0)
@@ -317,6 +317,7 @@ int manage(configurator *cfg)
         }
         pthread_detach(monit_t);
 	sleep(1);
+	*/
 	/* Thread for PIPE communication *
 	syslog (LOG_INFO,"\nCreating pipe thread\n");
         rc = pthread_create(&pipe_t, NULL, rcv_pipe_thread, NULL);

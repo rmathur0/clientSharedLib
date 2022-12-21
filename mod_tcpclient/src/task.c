@@ -143,22 +143,15 @@ int is_ID_present_idq(tsidque_t **head, char *tid, int *conn)
 	{
 		temp_id = (char*)calloc((strlen(tid) + 1), sizeof(char));
                 strcpy(temp_id, tid);
-	}
-	while(temp->next != NULL)
-	{
-		
-		if ( strcmp(temp_id, temp->id) == 0)
-		{
-			*conn = temp->conn;
-			free(temp_id);
-			return 1;
-		}
-		temp = temp->next;
-		if ( strcmp(temp_id, temp->id) == 0)
-		{
-			*conn = temp->conn;
-			free(temp_id);
-			return 1;
+		while(temp != NULL)
+		{	
+			if ( strcmp(temp_id, temp->id) == 0)
+			{
+				*conn = temp->conn;
+				free(temp_id);
+				return 1;
+			}
+			temp = temp->next;
 		}
 	}
 	return 0;
@@ -178,47 +171,22 @@ int lookup_ID_idq(tsidque_t **head, char *tid, long *elapsed_msecs, tsidque_t *n
         {
                 temp_id = (char*)calloc((strlen(tid) + 1), sizeof(char));
                 strcpy(temp_id, tid);
-        }
-        if (temp->next == NULL)
-        {
-		syslog(LOG_INFO, "RM: Only one element");
-                if ( strcmp(temp_id, temp->id) == 0)
-                {
-                        gettimeofday(&curr, NULL);
-			time_elapsed = (curr.tv_sec - temp->ATime.tv_sec)*1000 + (curr.tv_usec - temp->ATime.tv_usec)/1000;
-			*elapsed_msecs = time_elapsed;
-			node->callback_f = temp->callback_f;
-			node->callback_param = temp->callback_param;
-                        free(temp_id);
-			syslog(LOG_INFO, "RM: Found the ID, %s:%s", temp_id, temp->id);
-                        return 1;
-                }
-        }
-        while(temp->next != NULL)
-        {
-		syslog(LOG_INFO,"RM: Checking the element, %s:%s",temp_id, temp->id);
-                if ( strcmp(temp_id, temp->id) == 0)
-                {
-                        gettimeofday(&curr, NULL);
-			time_elapsed = (curr.tv_sec - temp->ATime.tv_sec)*1000 + (curr.tv_usec - temp->ATime.tv_usec)/1000;
-			*elapsed_msecs = time_elapsed;
-			node->callback_f = temp->callback_f;
-			node->callback_param = temp->callback_param;
-                        free(temp_id);
-                        return 1;
-                }
-                temp = temp->next;
-                if ( strcmp(temp_id, temp->id) == 0)
-                {
-                        gettimeofday(&curr, NULL);
-			time_elapsed = (curr.tv_sec - temp->ATime.tv_sec)*1000 + (curr.tv_usec - temp->ATime.tv_usec)/1000;
-			*elapsed_msecs = time_elapsed;
-			node->callback_f = temp->callback_f;
-			node->callback_param = temp->callback_param;
-                        free(temp_id);
-                        return 1;
-                }
-        }
+        	while(temp != NULL)
+        	{
+			syslog(LOG_INFO,"RM: Checking the element, %s:%s",temp_id, temp->id);
+                	if ( strcmp(temp_id, temp->id) == 0)
+                	{
+                	        gettimeofday(&curr, NULL);
+				time_elapsed = (curr.tv_sec - temp->ATime.tv_sec)*1000 + (curr.tv_usec - temp->ATime.tv_usec)/1000;
+				*elapsed_msecs = time_elapsed;
+				node->callback_f = temp->callback_f;
+				node->callback_param = temp->callback_param;
+                        	free(temp_id);
+                        	return 1;
+                	}
+                	temp = temp->next;
+        	}
+	}
         return 0;
 
 }
@@ -228,19 +196,9 @@ int update_entry_idq(tsidque_t **head, char *id, TransactionCallback_Res_f *call
 {
 	tsidque_t *temp = *head;
 
-        if(temp->next == NULL)
-        {
-                if ( strcmp(id, temp->id) == 0)
-                {
-                        gettimeofday(&temp->ATime, NULL);
-                        temp->ETime = temp->ATime;
-                        temp->ETime.tv_sec+= EXPIRY;
-                        temp->callback_f = callback_f;
-                        temp->callback_param = callback_param;
-                        return temp->conn;
-                }
-        }
-	while(temp->next != NULL)
+	if (*head == NULL)
+		return 0;
+	while(temp != NULL)
 	{
 		if ( strcmp(id, temp->id) == 0)
 		{
@@ -252,15 +210,6 @@ int update_entry_idq(tsidque_t **head, char *id, TransactionCallback_Res_f *call
 			return temp->conn;
 		}
 		temp = temp->next;
-		if ( strcmp(id, temp->id) == 0)
-		{
-			gettimeofday(&temp->ATime, NULL);
-			temp->ETime = temp->ATime;
-			temp->ETime.tv_sec+= EXPIRY;
-			temp->callback_f = callback_f;
-			temp->callback_param = callback_param;
-			return temp->conn;
-		}
 	}
 	return -1;
 }
@@ -325,38 +274,36 @@ void rem_expired_idq(tsidque_t **head)
 		return;
 	gettimeofday(&now, NULL);
 
-        if ( (temp->ETime.tv_sec < now.tv_sec) || ((temp->ETime.tv_sec == now.tv_sec) && (temp->ETime.tv_usec < now.tv_usec)) )
+	if ( (temp->ETime.tv_sec < now.tv_sec) || ((temp->ETime.tv_sec == now.tv_sec) && (temp->ETime.tv_usec < now.tv_usec)) )
 	{
-                *head = (*head)->next;
-		if (*head)
-                	(*head)->prev = NULL;
-                temp->next = temp->prev = NULL;
-		free(temp->id);
-		free(temp->callback_param);
-                free(temp);
-        }
-        else    
+		if(temp->id)
+			free(temp->id);
+		if(temp->callback_param)
+			free(temp->callback_param);
+		(*head)->prev = NULL;
+		*head = temp->next;
+		free(temp);
+	}
+        while(temp != NULL)
         {       
-                while(temp->next != NULL)
-                {       
-                        if ( (temp->next->ETime.tv_sec < now.tv_sec) || ((temp->next->ETime.tv_sec == now.tv_sec) && (temp->next->ETime.tv_usec < now.tv_usec)) )
-                        {       
-                                node = temp->next;
-                                temp->next = temp->next->next;
-                                if (temp->next)
-                                        temp->next->prev = temp;
-                                node->next = node->prev = NULL;
-				free(node->id);
-				free(node->callback_param);
-				free(node);
-                                break;
-                        }
-                        else    
-                        {       
-                                temp = temp->next;
-                        }
-                }
-        }       
+        	if ( (temp->ETime.tv_sec < now.tv_sec) || ((temp->ETime.tv_sec == now.tv_sec) && (temp->ETime.tv_usec < now.tv_usec)) )
+        	{       
+        		node = temp;
+			if (temp->next)
+			{
+        			temp->next = temp->next->next;
+        			temp->next->prev = temp->prev;
+				temp = temp->next;
+			}
+			free(node->id);
+			free(node->callback_param);
+			free(node);
+        	}
+        	else    
+        	{       
+        		temp = temp->next;
+        	}
+        }
         
 }
 
@@ -420,14 +367,15 @@ msgque_t *pop_from_msgq(msgque_t **head, int con)
 	}
 	else
 	{
-		while(temp->next != NULL)
+		while(temp != NULL)
 		{
-			if (temp->next->conn == con)
+			if (temp->conn == con)
 			{
-				node = temp->next;
-				temp->next = temp->next->next;
-				if (temp->next)
-					temp->next->prev = temp;
+				node = temp;
+				if (temp->next){
+					temp->next->prev = temp->prev;
+					temp->prev->next = temp->next;
+				}
 				node->next = node->prev = NULL;
 				break;
 			}
@@ -438,7 +386,7 @@ msgque_t *pop_from_msgq(msgque_t **head, int con)
 		}
 	}
 
-	return temp;
+	return node;
 }
 
 
@@ -446,22 +394,25 @@ msgque_t *pop_from_msgq(msgque_t **head, int con)
 int parse_xml_attribute(char *in,int in_len, char *startKey, char *endKey, xchar *out)
 {
         int i=0, j=0;
-        for(i=0;i<in_len; ++i)
-        {
-                if(strncmp(&in[i], startKey, strlen(startKey)) == 0)
-                {
-                        i+=strlen(startKey);
-                        j=i;
-                }
-                else if(strncmp(&in[i], endKey,strlen(endKey)) == 0)
-                {
-                        printf("\nRM: KeyName:%s, KeyValue: %.*s\n", startKey,i-j,in+j);
-                        out->len=i-j;
-                        out->s=in+j;
-                        return 1;
-                }
+	if (in && *in)
+	{
+        	for(i=0;i<in_len; ++i)
+        	{
+                	if(strncmp(&in[i], startKey, strlen(startKey)) == 0)
+                	{
+                	        i+=strlen(startKey);
+                       		j=i;
+                	}
+                	else if(strncmp(&in[i], endKey,strlen(endKey)) == 0)
+                	{
+                        	printf("\nRM: KeyName:%s, KeyValue: %.*s\n", startKey,i-j,in+j);
+                        	out->len=i-j;
+                        	out->s=in+j;
+                        	return 1;
+                	}
 
-        }
+        	}
+	}
         out->len=0;
         out->s = NULL;
         return 0;
