@@ -7,7 +7,7 @@
 #define MAX_BUF 2050
 
 /* ID expiration time */
-#define EXPIRY 300
+#define EXPIRY 30
 
 /* Socket read timeout */
 #define READ_SEC_TO 5

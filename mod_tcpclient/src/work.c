@@ -59,10 +59,11 @@ reconn:
 		while (c->state != 1)
 		{
 			//pthread_mutex_lock( &conntex );
+			syslog(LOG_INFO, "RM: trying to reconnect....");
                 	recreate_conn(c->peer_id, ref_gcfg);
                 	//pthread_mutex_unlock( &conntex );
 			//if (c->state != 1)
-			//	sleep(1);
+			sleep(1);
 		}
 		elapsed_msecs = 0;
                 message = receive_from_fd(c->fd, &rc);
@@ -369,6 +370,7 @@ int ready_to_send(request_t *req, TransactionCallback_Res_f *callback_f, void *c
 {
 	
 	pthread_mutex_lock( &qtex );
+	syslog(LOG_INFO, "Pushing to msgq, id:[%s]", req->id);
 	push_to_msgq(&gmsgq, &gtsidq, req->id, req->msg_len, req, callback_f, callback_param);
 	pthread_mutex_unlock( &qtex );
 	pthread_mutex_lock( &condition_mutex );
@@ -448,7 +450,7 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
         if(read_bytes!= total_size)
         {
         	if (read_bytes == 0) {
-                	syslog(LOG_INFO,"RM: Socket broken, attempting to create/join again.\n");
+                	//syslog(LOG_INFO,"RM: Socket broken, attempting to create/join again.\n");
 			return NULL;
                 } else if (read_bytes < 0) {
 			syslog(LOG_INFO,"RM: recv() returned %d bytes. errno=%d\n", read_bytes, errno);
@@ -475,7 +477,7 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
                 if (burst_len > 0)
                 	read_bytes+=burst_len;
                 else if (burst_len == 0) {
- 			syslog(LOG_INFO,"RM: Socket broken, attempting to create/join again.\n");
+ 			//syslog(LOG_INFO,"RM: Socket broken, attempting to create/join again.\n");
                         free(read_buf);
                         return NULL;
                 }

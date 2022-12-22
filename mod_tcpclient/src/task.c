@@ -276,6 +276,7 @@ void rem_expired_idq(tsidque_t **head)
 
 	if ( (temp->ETime.tv_sec < now.tv_sec) || ((temp->ETime.tv_sec == now.tv_sec) && (temp->ETime.tv_usec < now.tv_usec)) )
 	{
+		syslog(LOG_INFO, "RM: Elem expired. ID:%s, Callback_param:%s", temp->id, temp->callback_param);
 		if(temp->id)
 			free(temp->id);
 		if(temp->callback_param)
@@ -284,28 +285,27 @@ void rem_expired_idq(tsidque_t **head)
 		*head = temp->next;
 		free(temp);
 	}
-	temp = *head;
-        while(temp != NULL)
-        {       
-        	if ( (temp->ETime.tv_sec < now.tv_sec) || ((temp->ETime.tv_sec == now.tv_sec) && (temp->ETime.tv_usec < now.tv_usec)) )
+	else
+	{
+		tsidque_t *current  = *head;
+        	while(current->next != NULL)
         	{       
-        		node = temp;
-			if (temp->next)
-			{
-        			temp->next = temp->next->next;
-        			temp->next->prev = temp->prev;
-				temp = temp->next;
-			}
-			free(node->id);
-			free(node->callback_param);
-			free(node);
-        	}
-        	else    
-        	{       
-        		temp = temp->next;
+        		if ( (current->next->ETime.tv_sec < now.tv_sec) || ((current->next->ETime.tv_sec == now.tv_sec) && (current->next->ETime.tv_usec < now.tv_usec)) )
+        		{       
+        			temp = current->next;
+				syslog(LOG_INFO, "RM: Elem expired. ID:%s, Callback_param:%s", temp->id, temp->callback_param);
+        			current->next = current->next->next;
+				if (current->next)
+        				current->next->prev = current;
+				syslog(LOG_INFO, "RM: id:%s", temp->id);
+				if(temp->id) free(temp->id);
+				if(temp->callback_param) free(temp->callback_param);
+				free(temp);
+        		}
+			else
+        			current = current->next;
         	}
         }
-        
 }
 
 
@@ -322,6 +322,7 @@ void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, int len, re
         {
                 temp_id = (char*)calloc(strlen(tid)+1, sizeof(char));
                 strcpy(temp_id, tid);
+		syslog(LOG_INFO,"RM: push_to_msgq id:%s", temp_id);
         }
 	else
 		return;
@@ -329,7 +330,7 @@ void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, int len, re
 	temp->len = len;
 	strcpy(temp->id, temp_id);
 	temp->conn = con;
-	rc = is_ID_present_idq(idhead, tid, &temp->conn);
+	rc = is_ID_present_idq(idhead, temp_id, &temp->conn);
 	if (rc == 1)
 	{
 		ret = update_entry_idq(idhead, temp_id, callback_f, callback_param);
@@ -337,7 +338,7 @@ void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, int len, re
 			goto add;
 	}
 	else
-add:		temp->conn = add_entry_idq(idhead, tid, callback_f, callback_param);
+add:		temp->conn = add_entry_idq(idhead, temp_id, callback_f, callback_param);
 	
 	if (trav == NULL)
         {
