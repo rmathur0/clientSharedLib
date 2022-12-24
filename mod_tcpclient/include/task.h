@@ -25,6 +25,7 @@ typedef struct {
 typedef struct idque {
 	char *id;
 	int conn;
+	char is_expired;
 	struct timeval ATime;
 	struct timeval ETime;
 	struct idque *prev;
@@ -69,8 +70,11 @@ int add_entry_idq(tsidque_t **head, char *tid, TransactionCallback_Res_f *callba
 /* Update the existing element in Q */
 int update_entry_idq(tsidque_t **head, char *id, TransactionCallback_Res_f *callback_f, void *callback_param);
 
+/* Mark expired element in this Q */
+void list_expired_idq(tsidque_t **head);
+
 /* Del expired element in this Q */
-void rem_expired_idq(tsidque_t **head);
+void rem_id(tsidque_t **head, char *tid);
 
 /* Add element in msgque_t */
 void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, int len, request_t *data, TransactionCallback_Res_f *callback_f, void *callback_param);

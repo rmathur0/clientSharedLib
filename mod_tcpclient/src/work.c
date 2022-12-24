@@ -54,14 +54,15 @@ void *recv_worker_thread(void *arg) {
         syslog(LOG_INFO,"RM: Inside worker thread [%d]", c->peer_id);
         while(1)
         {
-		tid = NULL; is_sid_present = 0; ; req = NULL; res = NULL;
+		tid = NULL; is_sid_present = 0; req = NULL; res = NULL;
+		memset(&n, 0, sizeof(tsidque_t));
 reconn:
 		while (c->state != 1)
 		{
-			//pthread_mutex_lock( &conntex );
+			pthread_mutex_lock( &conntex );
 			syslog(LOG_INFO, "RM: trying to reconnect....");
                 	recreate_conn(c->peer_id, ref_gcfg);
-                	//pthread_mutex_unlock( &conntex );
+                	pthread_mutex_unlock( &conntex );
 			//if (c->state != 1)
 			sleep(1);
 		}
@@ -136,9 +137,17 @@ reconn:
                                                         res->retcode = retcode;
                                                         res->query_res = message;
 				    			if (lookup == 1)
-								n.callback_f(0, n.callback_param, res, elapsed_msecs); 
+							{
+								if (n.is_expired == 0)
+									n.callback_f(0, n.callback_param, res, elapsed_msecs); 
+								else
+									n.callback_f(1, n.callback_param, res, elapsed_msecs);
+								pthread_mutex_lock( &qtex );
+								rem_id(&gtsidq, tid);
+								pthread_mutex_unlock( &qtex );
+							}
 							else
-								n.callback_f(1, n.callback_param, res, elapsed_msecs);
+								{free(message); message = NULL; free(res); res = NULL;}
 				    			free(tid); 
 				    			tid = NULL; 
 						}
@@ -210,10 +219,18 @@ reconn:
                                                         	strcpy(res->id, tid);
                                                         	res->retcode = retcode;
                                                         	res->query_res = message;
-                                                		if (lookup == 1)
-                                                        		n.callback_f(0, n.callback_param, res, elapsed_msecs);
-                                                		else
-									n.callback_f(1, n.callback_param, res, elapsed_msecs);
+				    				if (lookup == 1)
+								{
+									if (n.is_expired == 0)
+										n.callback_f(0, n.callback_param, res, elapsed_msecs); 
+									else
+										n.callback_f(1, n.callback_param, res, elapsed_msecs);
+									pthread_mutex_lock( &qtex );
+									rem_id(&gtsidq, tid);
+									pthread_mutex_unlock( &qtex );
+								}
+								else
+									{free(message); message = NULL; free(res); res = NULL;}
                                                 		free(tid); 
                                                 		tid = NULL; 
 							}
@@ -232,6 +249,7 @@ void *send_worker_thread(void *arg)
         con_t *c = (con_t*)arg;
 	msgque_t *node;
 	char msglen[5];
+	int rc = 0;
         syslog(LOG_INFO,"RM: Inside send_worker_thread\n");
         while(1)
        {
@@ -244,8 +262,11 @@ void *send_worker_thread(void *arg)
 
 		/* In hopes that receive_thread has reconnected */
 		if (c->state != 1)
-                        sleep(READ_SEC_TO);
-
+		{
+			pthread_mutex_lock( &conntex );
+                        recreate_conn(c->peer_id, ref_gcfg);
+			pthread_mutex_unlock( &conntex );
+		}
                 /* ToDo: Acquire lock on msgque and tsidque */
 		pthread_mutex_lock( &qtex );
                 node = pop_from_msgq(&gmsgq, c->peer_id);
@@ -256,9 +277,17 @@ void *send_worker_thread(void *arg)
 		}
 		memset(msglen, 0, 5);
 		sprintf(msglen,"%04d", node->len);
-		send_to_fd(c->fd, msglen, strlen(msglen));
+		rc = send_to_fd(c->fd, msglen, strlen(msglen));
+		if (rc == -1)
+		{
+			c->state = 0;
+		}
 		syslog(LOG_INFO,"RM: Sending [%s] to kamailio",node->data->req_buf);
-                send_to_fd(c->fd, node->data->req_buf, node->len);
+                rc = send_to_fd(c->fd, node->data->req_buf, node->len);
+		if (rc == -1)
+		{
+			c->state = 0;
+		}
 		free(node->data->req_buf);
 		free(node->data);
 		free(node);
@@ -308,7 +337,8 @@ int manage(configurator *cfg)
 		j+= 2;
 	}
 	sleep(1);
-	/* Thread for monitoring the connections to far right peers *
+	/* Thread for monitoring the connections to far right peers */
+	/*
 	syslog (LOG_INFO,"\nRM: Creating monitor thread\n");
         rc = pthread_create(&monit_t, NULL, monitor_thread, NULL);
         if (rc != 0)
@@ -473,7 +503,8 @@ again:  read_bytes = recv(fd, lenbuf+total_read, total_size, MSG_WAITALL);
          read_buf = (char*)calloc(received+1, sizeof(char));
          while(read_bytes < received)
          {
-         	burst_len = recv(fd, read_buf+read_bytes, received-read_bytes, MSG_WAITALL);
+         	burst_len = recv(fd, read_buf+read_bytes, received-read_bytes, 0);
+		syslog(LOG_INFO, "RM: received str:%s and burst_len:%d", read_buf, burst_len);
                 if (burst_len > 0)
                 	read_bytes+=burst_len;
                 else if (burst_len == 0) {
@@ -501,7 +532,7 @@ void *qmanager_thread(void * arg)
 	{
 		syslog (LOG_INFO,"\nRM: Timer checking expired TSIDs.\n");
 		pthread_mutex_lock( &qtex );
-		rem_expired_idq(&gtsidq);
+		list_expired_idq(&gtsidq);
 		pthread_mutex_unlock( &qtex );
 		sleep(MONITORING_PERIOD*2);
 	}

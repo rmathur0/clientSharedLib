@@ -55,6 +55,7 @@ connect_now:            if (conn < 0) {
 				sleep(5);
                         	goto connect_now;
 			}
+			continue;
                 }
                 //setnonblock(conn);
                 setsockopt(conn, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
@@ -85,7 +86,7 @@ void monitor_sock_conn(configurator *cfg)
         for (i = 0; i < cfg->num_peers; i++) {
 	       	rc = getsockopt (gconn_list[i].fd, SOL_SOCKET, SO_ERROR, &err, &len);
         	if ((rc != 0)||(err != 0)) {
-        		syslog (LOG_INFO,"RM: error getting getsockopt return code: %s and socket error: %s\n", strerror(rc), strerror(err));
+        		//syslog (LOG_INFO,"RM: error getting getsockopt return code: %s and socket error: %s\n", strerror(rc), strerror(err));
         		close(gconn_list[i].fd);
         		gconn_list[i].state=0;
 			sprintf(sndbuf, "%d", cfg->peers[i].port);
@@ -93,6 +94,8 @@ void monitor_sock_conn(configurator *cfg)
  			gconn_list[i].fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 			rc = connect(gconn_list[i].fd, res->ai_addr, res->ai_addrlen);
         		//setnonblock(gconn_list[i].fd);
+        		if (rc < 0)
+				continue;
         		setsockopt(gconn_list[i].fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
         		setsockopt(gconn_list[i].fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(int));
         		setsockopt(gconn_list[i].fd, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(int));
@@ -121,7 +124,7 @@ void recreate_conn(int pid, configurator *cfg)
 	rc = connect(gconn_list[pid].fd, res->ai_addr, res->ai_addrlen);
         syslog(LOG_INFO,"RM: Upon recreation, connect returned [%d] \n",rc);
         if (rc < 0) {
-        	syslog (LOG_INFO,"RM: Connect failed again for [%s:%d] return code:[%s] & socket error:[%s]\n", cfg->peers[pid].ip, cfg->peers[pid].port, strerror(rc), strerror(err));
+        	syslog (LOG_INFO,"RM: Connect failed again for [%s:%d] return code:[%d] & socket error:[%s]\n", cfg->peers[pid].ip, cfg->peers[pid].port, rc, strerror(errno));
 		return;
         }
 	setsockopt(gconn_list[pid].fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive));
@@ -179,6 +182,8 @@ int lookup_ID_idq(tsidque_t **head, char *tid, long *elapsed_msecs, tsidque_t *n
                 	        gettimeofday(&curr, NULL);
 				time_elapsed = (curr.tv_sec - temp->ATime.tv_sec)*1000 + (curr.tv_usec - temp->ATime.tv_usec)/1000;
 				*elapsed_msecs = time_elapsed;
+				node->id = temp->id;
+				node->is_expired = temp->is_expired;
 				node->callback_f = temp->callback_f;
 				node->callback_param = temp->callback_param;
                         	free(temp_id);
@@ -235,6 +240,7 @@ int add_entry_idq(tsidque_t **head, char *tid, TransactionCallback_Res_f *callba
 	gettimeofday(&temp->ATime, NULL);
 	temp->ETime = temp->ATime;
 	temp->ETime.tv_sec+= EXPIRY;
+	temp->is_expired = 0;
 	temp->next = NULL;
 	temp->callback_f = callback_f;
         temp->callback_param = callback_param;	
@@ -265,50 +271,61 @@ reassign_conn:	con = glast_con_rr % num_peers;
 	return con;
 }
 
-void rem_expired_idq(tsidque_t **head)
+void list_expired_idq(tsidque_t **head)
 {
-	tsidque_t *temp = *head, *node;
+	tsidque_t *temp = NULL;
 	struct timeval now;
+	tsidque_t *current = *head;
 
-	if (temp == NULL)
+	if (current == NULL)
 		return;
-	gettimeofday(&now, NULL);
 
-	if ( (temp->ETime.tv_sec < now.tv_sec) || ((temp->ETime.tv_sec == now.tv_sec) && (temp->ETime.tv_usec < now.tv_usec)) )
-	{
-		syslog(LOG_INFO, "RM: Elem expired. ID:%s, Callback_param:%s", temp->id, temp->callback_param);
-		if(temp->id)
-			free(temp->id);
-		if(temp->callback_param)
-			free(temp->callback_param);
-		(*head)->prev = NULL;
-		*head = temp->next;
-		free(temp);
-	}
-	else
-	{
-		tsidque_t *current  = *head;
-        	while(current->next != NULL)
+        while(current != NULL)
+        {       
+		gettimeofday(&now, NULL);
+        	if ( (current->ETime.tv_sec < now.tv_sec) || ((current->ETime.tv_sec == now.tv_sec) && (current->ETime.tv_usec < now.tv_usec)) )
         	{       
-        		if ( (current->next->ETime.tv_sec < now.tv_sec) || ((current->next->ETime.tv_sec == now.tv_sec) && (current->next->ETime.tv_usec < now.tv_usec)) )
-        		{       
-        			temp = current->next;
-				syslog(LOG_INFO, "RM: Elem expired. ID:%s, Callback_param:%s", temp->id, temp->callback_param);
-        			current->next = current->next->next;
-				if (current->next)
-        				current->next->prev = current;
-				syslog(LOG_INFO, "RM: id:%s", temp->id);
-				if(temp->id) free(temp->id);
-				if(temp->callback_param) free(temp->callback_param);
-				free(temp);
-        		}
-			else
-        			current = current->next;
+			syslog(LOG_INFO, "RM: Elem expired.. ID:%s, Callback_param:%s", current->id, current->callback_param);
+			current->is_expired = 1;
         	}
+        	current = current->next;
         }
 }
 
 
+void rem_id(tsidque_t **head, char *tid)
+{
+        tsidque_t *temp = NULL;
+        struct timeval now;
+        tsidque_t *current = *head;
+
+        if (current == NULL)
+                return;
+	if (strcmp(current->id, tid) == 0)
+	{
+		*head = (*head)->next;
+		free(current->id);
+		free(current);
+	}
+	else
+	{
+        	while(current->next != NULL)
+        	{
+			syslog(LOG_INFO,"RM: Checking %s with %s", tid, current->next->id);
+                	if (strcmp(current->next->id, tid) == 0)
+			{
+				syslog(LOG_INFO,"RM: Removing %s", tid);
+				temp = current->next;
+				current->next = current->next->next;
+				free(temp->id);
+				free(temp);
+				break;
+			}
+			else
+                		current = current->next;
+        	}
+	}
+}
 /* Add element in msgque_t */
 void push_to_msgq(msgque_t **msghead, tsidque_t **idhead, char *tid, int len, request_t *data, TransactionCallback_Res_f *callback_f, void *callback_param)
 {
